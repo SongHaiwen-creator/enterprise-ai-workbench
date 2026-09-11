@@ -209,6 +209,14 @@ tempCodeRunnerFile.py
 # PyPI configuration file
 .pypirc
 
+# Enterprise AI Workbench local dependencies and build output
+frontend/node_modules/
+frontend/.next/
+backend/.venv/
+.env
+.env.*
+!.env.example
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
