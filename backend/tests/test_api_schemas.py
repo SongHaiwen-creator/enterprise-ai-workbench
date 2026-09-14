@@ -1,0 +1,54 @@
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from uuid import uuid4
+
+import pytest
+from pydantic import ValidationError
+
+from app.models.enums import MembershipRole, MembershipStatus, WorkspaceStatus
+from app.schemas.membership import MembershipResponse, MembershipUpdate
+from app.schemas.workspace import WorkspaceCreate, WorkspaceResponse
+
+
+def test_workspace_create_normalizes_input() -> None:
+    payload = WorkspaceCreate(name=" Example Company ", slug=" Example-Company ")
+
+    assert payload.name == "Example Company"
+    assert payload.slug == "example-company"
+
+
+@pytest.mark.parametrize("slug", ["has spaces", "has_underscore", "-leading", "trailing-"])
+def test_workspace_create_rejects_invalid_slug(slug: str) -> None:
+    with pytest.raises(ValidationError):
+        WorkspaceCreate(name="Example Company", slug=slug)
+
+
+@pytest.mark.parametrize("payload", [{}, {"role": None}, {"status": None}])
+def test_membership_update_requires_a_non_null_field(payload: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        MembershipUpdate.model_validate(payload)
+
+
+def test_orm_response_models_read_attributes() -> None:
+    now = datetime.now(UTC)
+    workspace_id = uuid4()
+    user_id = uuid4()
+    workspace = SimpleNamespace(
+        id=workspace_id,
+        name="Example Company",
+        slug="example-company",
+        status=WorkspaceStatus.ACTIVE,
+        created_at=now,
+        updated_at=now,
+    )
+    membership = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        workspace_id=workspace_id,
+        role=MembershipRole.EMPLOYEE,
+        status=MembershipStatus.INVITED,
+        joined_at=None,
+    )
+
+    assert WorkspaceResponse.model_validate(workspace).id == workspace_id
+    assert MembershipResponse.model_validate(membership).user_id == user_id

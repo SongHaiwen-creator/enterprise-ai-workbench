@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy import CheckConstraint, DateTime, String, func, text
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from app.db.base import Base
 from app.models.enums import StringEnumType, WorkspaceStatus
@@ -50,3 +50,11 @@ class Workspace(Base):
         back_populates="workspace",
         passive_deletes=True,
     )
+
+    @validates("slug")
+    def normalize_slug(self, key: str, value: str) -> str:
+        del key
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("slug must not be empty")
+        return normalized
