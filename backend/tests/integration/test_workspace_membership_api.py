@@ -3,26 +3,53 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
 from app.main import app
 from app.models import User
+from app.security.tokens import create_access_token
 
 pytestmark = pytest.mark.integration
+JWT_SECRET = "workspace-api-test-secret-that-is-longer-than-thirty-two-bytes"
 
 
 @pytest.fixture
-def client(db_session: Session) -> Generator[TestClient, None, None]:
+def auth_settings(database_urls: tuple[object, object]) -> Settings:
+    database_url, test_database_url = database_urls
+    return Settings(
+        database_url=str(database_url),
+        test_database_url=str(test_database_url),
+        jwt_secret_key=JWT_SECRET,
+        _env_file=None,
+    )
+
+
+@pytest.fixture
+def client(
+    db_session: Session,
+    auth_settings: Settings,
+) -> Generator[TestClient, None, None]:
     def override_db_session() -> Generator[Session, None, None]:
         yield db_session
 
+    caller = User(email="api-caller@company.com", name="API Caller")
+    db_session.add(caller)
+    db_session.commit()
+
     app.dependency_overrides[get_db_session] = override_db_session
+    app.dependency_overrides[get_settings] = lambda: auth_settings
     try:
         with TestClient(app) as test_client:
+            test_client.headers["Authorization"] = (
+                f"Bearer {create_access_token(caller.id, auth_settings)}"
+            )
             yield test_client
     finally:
         app.dependency_overrides.pop(get_db_session, None)
+        app.dependency_overrides.pop(get_settings, None)
 
 
 def create_user(db_session: Session, *, email: str, name: str) -> User:
@@ -96,7 +123,20 @@ def test_list_members_joins_useful_user_information(
     response = client.get(f"/api/workspaces/{workspace['id']}/members")
 
     assert response.status_code == 200
-    assert response.json() == [
+    members = response.json()
+    caller = db_session.scalar(select(User).where(User.email == "api-caller@company.com"))
+    assert caller is not None
+    assert len(members) == 3
+    assert members == [
+        {
+            "id": members[0]["id"],
+            "user_id": str(caller.id),
+            "email": "api-caller@company.com",
+            "name": "API Caller",
+            "role": "system_admin",
+            "status": "active",
+            "joined_at": members[0]["joined_at"],
+        },
         {
             "id": second.json()["id"],
             "user_id": str(alice.id),
@@ -116,12 +156,18 @@ def test_list_members_joins_useful_user_information(
             "joined_at": None,
         },
     ]
+    assert members[0]["joined_at"] is not None
 
 
-def test_list_members_returns_empty_list_and_checks_workspace(client: TestClient) -> None:
+def test_list_members_includes_creator_and_checks_workspace(client: TestClient) -> None:
     workspace = create_workspace(client)
 
-    assert client.get(f"/api/workspaces/{workspace['id']}/members").json() == []
+    members = client.get(f"/api/workspaces/{workspace['id']}/members").json()
+    assert len(members) == 1
+    assert members[0]["email"] == "api-caller@company.com"
+    assert members[0]["role"] == "system_admin"
+    assert members[0]["status"] == "active"
+    assert members[0]["joined_at"] is not None
 
     response = client.get(f"/api/workspaces/{uuid4()}/members")
     assert response.status_code == 404
