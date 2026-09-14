@@ -1,0 +1,1 @@
+CREATE DATABASE enterprise_ai_workbench_test;
