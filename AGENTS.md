@@ -200,3 +200,96 @@ A task is complete only when:
 - Commit exists
 - Branch is pushed
 - Pull Request is created or updated
+
+## Feature Delivery Lifecycle
+
+The project is developed one feature at a time.
+
+Use the following lifecycle:
+
+1. Inspect the latest `main` branch.
+2. Identify the next unfinished roadmap feature.
+3. Create one dedicated feature branch.
+4. Create or update the Feature Spec.
+5. Create the corresponding GitHub Issue.
+6. Implement only that feature.
+7. Run feature tests and regression verification.
+8. Perform self-review.
+9. Commit and push the feature branch.
+10. Create a Pull Request targeting `main`.
+11. Stop when the feature is PR-ready.
+
+Do not begin the next roadmap feature in the same development thread.
+
+A feature is considered complete only after its Pull Request has been
+merged into `main`.
+
+The next feature should start from the latest updated `main` branch
+in a new development thread.
+
+## Pull Request and Merge Policy
+
+AI agents may:
+
+- create feature branches
+- create and update Feature Specs
+- create GitHub Issues
+- implement code
+- run tests
+- review diffs
+- commit
+- push
+- create and update Pull Requests
+
+AI agents must NOT merge Pull Requests into `main`.
+
+Final merge into `main` requires human approval.
+
+After a PR is merged:
+
+1. the related Issue should be closed
+2. local `main` should be updated
+3. the feature is considered complete
+4. the development thread for that feature ends
+5. the next feature starts in a new thread
+
+## Review Policy
+
+### Normal-risk features
+
+Examples:
+
+- UI changes
+- read-only endpoints
+- ordinary product behavior
+- non-security-sensitive frontend work
+
+Required:
+
+- implementation tests
+- regression verification
+- agent self-review
+- human merge
+
+An independent review agent is optional.
+
+### High-risk features
+
+Examples:
+
+- authentication
+- authorization / RBAC
+- tenant / workspace isolation
+- database migrations
+- destructive database operations
+- security-sensitive APIs
+- external write-capable tools
+- human approval policies
+
+Required:
+
+- human approval before implementation when required by this file
+- implementation tests
+- regression verification
+- independent review before merge
+- human merge
