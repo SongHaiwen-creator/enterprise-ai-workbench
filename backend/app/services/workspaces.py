@@ -6,13 +6,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Membership, User, Workspace
-from app.models.enums import MembershipStatus
+from app.models.enums import MembershipRole, MembershipStatus, WorkspaceStatus
 from app.schemas.membership import (
     MembershipCreate,
     MembershipUpdate,
     WorkspaceMemberResponse,
 )
-from app.schemas.workspace import WorkspaceCreate
+from app.schemas.workspace import WorkspaceCreate, WorkspaceListItemResponse
 from app.services.exceptions import ConflictError, NotFoundError
 
 WORKSPACE_SLUG_CONSTRAINT = "uq_workspaces_slug"
@@ -33,9 +33,20 @@ def get_workspace(session: Session, workspace_id: UUID) -> Workspace:
     return workspace
 
 
-def create_workspace(session: Session, payload: WorkspaceCreate) -> Workspace:
+def create_workspace(
+    session: Session,
+    payload: WorkspaceCreate,
+    creator_id: UUID,
+) -> Workspace:
     workspace = Workspace(name=payload.name, slug=payload.slug)
-    session.add(workspace)
+    creator_membership = Membership(
+        user_id=creator_id,
+        workspace=workspace,
+        role=MembershipRole.SYSTEM_ADMIN,
+        status=MembershipStatus.ACTIVE,
+        joined_at=datetime.now(UTC),
+    )
+    session.add_all((workspace, creator_membership))
 
     try:
         session.commit()
@@ -48,6 +59,42 @@ def create_workspace(session: Session, payload: WorkspaceCreate) -> Workspace:
 
     session.refresh(workspace)
     return workspace
+
+
+def list_user_workspaces(
+    session: Session,
+    user_id: UUID,
+) -> list[WorkspaceListItemResponse]:
+    statement = (
+        select(
+            Workspace.id,
+            Workspace.name,
+            Workspace.slug,
+            Workspace.status,
+            Membership.role,
+            Membership.joined_at,
+        )
+        .join(Membership, Membership.workspace_id == Workspace.id)
+        .where(
+            Membership.user_id == user_id,
+            Membership.status == MembershipStatus.ACTIVE,
+            Workspace.status == WorkspaceStatus.ACTIVE,
+        )
+        .order_by(Workspace.name, Workspace.id)
+    )
+    rows = session.execute(statement).all()
+
+    return [
+        WorkspaceListItemResponse(
+            id=row.id,
+            name=row.name,
+            slug=row.slug,
+            status=row.status,
+            role=row.role,
+            joined_at=row.joined_at,
+        )
+        for row in rows
+    ]
 
 
 def list_workspace_members(

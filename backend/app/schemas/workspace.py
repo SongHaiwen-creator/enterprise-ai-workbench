@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.enums import WorkspaceStatus
+from app.models.enums import MembershipRole, WorkspaceStatus
 
 SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 
@@ -38,3 +38,12 @@ class WorkspaceResponse(BaseModel):
     status: WorkspaceStatus
     created_at: datetime
     updated_at: datetime
+
+
+class WorkspaceListItemResponse(BaseModel):
+    id: UUID
+    name: str
+    slug: str
+    status: WorkspaceStatus
+    role: MembershipRole
+    joined_at: datetime | None
