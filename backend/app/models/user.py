@@ -29,6 +29,7 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[UserStatus] = mapped_column(
         StringEnumType(UserStatus),
         nullable=False,

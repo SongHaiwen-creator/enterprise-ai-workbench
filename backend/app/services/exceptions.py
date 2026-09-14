@@ -10,3 +10,11 @@ class NotFoundError(ServiceError):
 
 class ConflictError(ServiceError):
     """A write conflicts with an existing application resource."""
+
+
+class AuthenticationError(ServiceError):
+    """Authentication credentials are absent or invalid."""
+
+
+class ForbiddenError(ServiceError):
+    """An authenticated user cannot access the requested operation."""

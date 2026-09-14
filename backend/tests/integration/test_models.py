@@ -22,6 +22,7 @@ def test_successful_user_workspace_and_membership_insert(db_session: Session) ->
     db_session.commit()
 
     assert user.email == "alice@company.com"
+    assert user.password_hash is None
     assert user.status is UserStatus.ACTIVE
     assert workspace.status is WorkspaceStatus.ACTIVE
     assert membership.role is MembershipRole.EMPLOYEE
