@@ -16,6 +16,11 @@ class WorkspaceStatus(StrEnum):
     DISABLED = "disabled"
 
 
+class KnowledgeBaseStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
 class MembershipRole(StrEnum):
     EMPLOYEE = "employee"
     KNOWLEDGE_ADMIN = "knowledge_admin"

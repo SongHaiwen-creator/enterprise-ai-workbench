@@ -11,6 +11,7 @@ from app.services.exceptions import ForbiddenError, NotFoundError
 
 WORKSPACE_ACCESS_DENIED = "Not authorized for this workspace"
 SYSTEM_ADMIN_REQUIRED = "System administrator role required"
+KNOWLEDGE_ADMIN_REQUIRED = "Knowledge administrator role required"
 
 
 def get_active_workspace_membership(
@@ -52,4 +53,22 @@ def require_system_administrator(
 SystemAdministratorMembership = Annotated[
     Membership,
     Depends(require_system_administrator),
+]
+
+
+def require_knowledge_administrator(
+    membership: ActiveWorkspaceMembership,
+) -> Membership:
+    allowed_roles = {
+        MembershipRole.KNOWLEDGE_ADMIN,
+        MembershipRole.SYSTEM_ADMIN,
+    }
+    if membership.role not in allowed_roles:
+        raise ForbiddenError(KNOWLEDGE_ADMIN_REQUIRED)
+    return membership
+
+
+KnowledgeAdministratorMembership = Annotated[
+    Membership,
+    Depends(require_knowledge_administrator),
 ]

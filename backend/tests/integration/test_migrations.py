@@ -50,9 +50,13 @@ def test_password_hash_migration_preserves_existing_users(postgres_engine: Engin
 def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> None:
     inspector = inspect(postgres_engine)
 
-    assert {"alembic_version", "memberships", "users", "workspaces"} <= set(
-        inspector.get_table_names()
-    )
+    assert {
+        "alembic_version",
+        "knowledge_bases",
+        "memberships",
+        "users",
+        "workspaces",
+    } <= set(inspector.get_table_names())
     assert {index["name"] for index in inspector.get_indexes("users")} >= {
         "ix_users_email_lower"
     }
@@ -70,4 +74,62 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     with postgres_engine.connect() as connection:
         migration_context = MigrationContext.configure(connection)
-        assert migration_context.get_current_revision() == "0002"
+        assert migration_context.get_current_revision() == "0003"
+
+
+def test_knowledge_base_migration_upgrades_and_downgrades(
+    postgres_engine: Engine,
+) -> None:
+    alembic_config = Config(str(BACKEND_ROOT / "alembic.ini"))
+
+    with postgres_engine.connect() as connection:
+        alembic_config.attributes["connection"] = connection
+        try:
+            command.downgrade(alembic_config, "0002")
+            inspector = inspect(connection)
+            assert "knowledge_bases" not in inspector.get_table_names()
+            assert {"memberships", "users", "workspaces"} <= set(
+                inspector.get_table_names()
+            )
+
+            command.upgrade(alembic_config, "0003")
+            inspector = inspect(connection)
+            assert "knowledge_bases" in inspector.get_table_names()
+            assert {column["name"] for column in inspector.get_columns("knowledge_bases")} == {
+                "id",
+                "workspace_id",
+                "name",
+                "description",
+                "status",
+                "created_by",
+                "created_at",
+                "updated_at",
+            }
+            assert {index["name"] for index in inspector.get_indexes("knowledge_bases")} >= {
+                "ix_knowledge_bases_created_by",
+                "ix_knowledge_bases_workspace_id",
+            }
+            foreign_keys = {
+                tuple(foreign_key["constrained_columns"]): (
+                    foreign_key["referred_table"],
+                    foreign_key["options"].get("ondelete"),
+                )
+                for foreign_key in inspector.get_foreign_keys("knowledge_bases")
+            }
+            assert foreign_keys == {
+                ("created_by",): ("users", "RESTRICT"),
+                ("workspace_id",): ("workspaces", "RESTRICT"),
+            }
+            assert {constraint["name"] for constraint in inspector.get_check_constraints(
+                "knowledge_bases"
+            )} >= {"ck_knowledge_bases_status_values"}
+
+            command.downgrade(alembic_config, "0002")
+            inspector = inspect(connection)
+            assert "knowledge_bases" not in inspector.get_table_names()
+            assert {"memberships", "users", "workspaces"} <= set(
+                inspector.get_table_names()
+            )
+        finally:
+            connection.rollback()
+            command.upgrade(alembic_config, "head")
