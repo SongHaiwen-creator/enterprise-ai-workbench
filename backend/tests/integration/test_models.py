@@ -5,8 +5,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Membership, User, Workspace
-from app.models.enums import MembershipRole, MembershipStatus, UserStatus, WorkspaceStatus
+from app.models import KnowledgeBase, Membership, User, Workspace
+from app.models.enums import (
+    KnowledgeBaseStatus,
+    MembershipRole,
+    MembershipStatus,
+    UserStatus,
+    WorkspaceStatus,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -87,4 +93,61 @@ def test_status_check_constraint_is_enforced(db_session: Session) -> None:
         db_session.execute(
             text("INSERT INTO users (email, name, status) VALUES (:email, :name, :status)"),
             {"email": "invalid@company.com", "name": "Invalid", "status": "unknown"},
+        )
+
+
+def test_successful_knowledge_base_insert(db_session: Session) -> None:
+    creator = User(email="creator@company.com", name="Creator")
+    workspace = Workspace(name="Knowledge Workspace", slug="knowledge-workspace")
+    db_session.add_all([creator, workspace])
+    db_session.flush()
+    knowledge_base = KnowledgeBase(
+        workspace_id=workspace.id,
+        name="Employee Policies",
+        description="Approved policies",
+        created_by=creator.id,
+    )
+    db_session.add(knowledge_base)
+    db_session.commit()
+
+    assert knowledge_base.id is not None
+    assert knowledge_base.status is KnowledgeBaseStatus.ACTIVE
+    assert knowledge_base.created_at is not None
+    assert knowledge_base.updated_at is not None
+
+
+def test_knowledge_base_foreign_keys_are_enforced(db_session: Session) -> None:
+    db_session.add(
+        KnowledgeBase(
+            workspace_id=uuid4(),
+            name="Orphaned Knowledge",
+            created_by=uuid4(),
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+def test_knowledge_base_status_check_constraint_is_enforced(
+    db_session: Session,
+) -> None:
+    creator = User(email="status-creator@company.com", name="Creator")
+    workspace = Workspace(name="Status Workspace", slug="status-workspace")
+    db_session.add_all([creator, workspace])
+    db_session.flush()
+
+    with pytest.raises(IntegrityError):
+        db_session.execute(
+            text(
+                "INSERT INTO knowledge_bases "
+                "(workspace_id, name, status, created_by) "
+                "VALUES (:workspace_id, :name, :status, :created_by)"
+            ),
+            {
+                "workspace_id": workspace.id,
+                "name": "Invalid Status",
+                "status": "unknown",
+                "created_by": creator.id,
+            },
         )
