@@ -293,3 +293,35 @@ Required:
 - regression verification
 - independent review before merge
 - human merge
+
+## Open Source Reuse Policy
+
+Before implementing substantial AI infrastructure, first evaluate
+mature open-source libraries, SDKs, or services.
+
+Prefer, in order:
+
+1. existing project dependency
+2. official SDK/API integration
+3. small well-scoped open-source component
+4. custom implementation
+
+Compare candidates by:
+
+- functional fit
+- license
+- maintenance/activity
+- stack compatibility
+- deployment complexity
+- integration cost
+
+Do not reimplement commodity infrastructure without justification.
+
+Large external platforms must not replace the Workbench's ownership of:
+
+- Workspace
+- Authentication
+- RBAC
+- tenant isolation
+- product configuration
+- approval policy
