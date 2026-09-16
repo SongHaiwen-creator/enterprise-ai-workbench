@@ -171,11 +171,19 @@ Fields:
 | file_type | VARCHAR | pdf / txt / md |
 | status | VARCHAR | uploaded / processing / ready / failed / disabled |
 | version | INTEGER | Document version |
+| extracted_text | TEXT | Normalized text retained for later chunking; not exposed by the Document API |
+| processing_error | VARCHAR | Sanitized processing failure summary |
 | created_by | UUID | Foreign key → users.id |
 | created_at | TIMESTAMP | Creation time |
 | updated_at | TIMESTAMP | Last update time |
 
 The MVP only supports text-extractable documents.
+
+The Document Management API accepts PDF, TXT and Markdown uploads up to
+10 MiB. It retains normalized extracted text in PostgreSQL but does not retain
+the original uploaded binary. New documents start at version 1; replacement
+and automatic version management are deferred until a stable document-family
+model is defined.
 
 ---
 

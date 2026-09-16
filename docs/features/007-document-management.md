@@ -1,6 +1,6 @@
 # Feature 007 - Document Management API
 
-Status: Pending Human Approval
+Status: Approved
 Milestone: 2
 
 ## 1. Goal
@@ -426,9 +426,9 @@ Verification must include:
 
 SQLite must not replace PostgreSQL integration tests.
 
-## 12. Human Approval Gate
+## 12. Approval Record
 
-Implementation is blocked pending explicit human approval for:
+Human approval was granted on 2026-09-16 for:
 
 - Alembic revision `0004` and the `documents` schema.
 - The Document read/mutation authorization matrix and tenant-isolation rules.
@@ -436,9 +436,9 @@ Implementation is blocked pending explicit human approval for:
   source binary.
 - Adding the small `python-multipart` and `pypdf` runtime dependencies.
 
-Approval has not yet been granted. No migration, authorization, parser,
-dependency, or API implementation may begin until this section is updated with
-the approval record.
+Implementation remains limited to the migration, authorization policy,
+extracted-text retention model, dependencies, and API scope defined in this
+specification.
 
 ## 13. Out of Scope
 

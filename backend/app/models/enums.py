@@ -21,6 +21,20 @@ class KnowledgeBaseStatus(StrEnum):
     DISABLED = "disabled"
 
 
+class DocumentFileType(StrEnum):
+    PDF = "pdf"
+    TXT = "txt"
+    MARKDOWN = "md"
+
+
+class DocumentStatus(StrEnum):
+    UPLOADED = "uploaded"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
+    DISABLED = "disabled"
+
+
 class MembershipRole(StrEnum):
     EMPLOYEE = "employee"
     KNOWLEDGE_ADMIN = "knowledge_admin"

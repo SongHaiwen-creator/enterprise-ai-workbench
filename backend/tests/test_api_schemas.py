@@ -6,11 +6,14 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.enums import (
+    DocumentFileType,
+    DocumentStatus,
     KnowledgeBaseStatus,
     MembershipRole,
     MembershipStatus,
     WorkspaceStatus,
 )
+from app.schemas.document import DocumentResponse, DocumentStatusUpdate
 from app.schemas.knowledge_base import (
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
@@ -57,6 +60,24 @@ def test_knowledge_base_update_requires_a_valid_field(
         KnowledgeBaseUpdate.model_validate(payload)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"status": "uploaded"},
+        {"status": "processing"},
+        {"status": "failed"},
+        {"status": None},
+        {"status": "ready", "unknown": "value"},
+    ],
+)
+def test_document_status_update_only_accepts_manageable_statuses(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        DocumentStatusUpdate.model_validate(payload)
+
+
 def test_orm_response_models_read_attributes() -> None:
     now = datetime.now(UTC)
     workspace_id = uuid4()
@@ -87,7 +108,23 @@ def test_orm_response_models_read_attributes() -> None:
         created_at=now,
         updated_at=now,
     )
+    document = SimpleNamespace(
+        id=uuid4(),
+        workspace_id=workspace_id,
+        knowledge_base_id=knowledge_base.id,
+        file_name="employee-handbook.pdf",
+        file_type=DocumentFileType.PDF,
+        status=DocumentStatus.READY,
+        version=1,
+        processing_error=None,
+        created_by=user_id,
+        created_at=now,
+        updated_at=now,
+    )
 
     assert WorkspaceResponse.model_validate(workspace).id == workspace_id
     assert MembershipResponse.model_validate(membership).user_id == user_id
     assert KnowledgeBaseResponse.model_validate(knowledge_base).created_by == user_id
+    response = DocumentResponse.model_validate(document)
+    assert response.knowledge_base_id == knowledge_base.id
+    assert "extracted_text" not in response.model_dump()
