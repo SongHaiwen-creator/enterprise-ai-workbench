@@ -2,7 +2,7 @@ name: enterprise-ai-workbench
 
 services:
   postgres:
-    image: postgres:17.11-alpine3.24
+    image: pgvector/pgvector:0.8.6-pg17-trixie
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-workbench}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workbench_local}

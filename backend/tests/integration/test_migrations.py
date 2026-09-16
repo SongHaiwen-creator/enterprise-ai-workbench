@@ -52,6 +52,7 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     assert {
         "alembic_version",
+        "chunks",
         "documents",
         "knowledge_bases",
         "memberships",
@@ -73,7 +74,7 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     with postgres_engine.connect() as connection:
         migration_context = MigrationContext.configure(connection)
-        assert migration_context.get_current_revision() == "0004"
+        assert migration_context.get_current_revision() == "0005"
 
 
 def test_knowledge_base_migration_upgrades_and_downgrades(
@@ -191,6 +192,86 @@ def test_document_migration_upgrades_and_downgrades(
             inspector = inspect(connection)
             assert "documents" not in inspector.get_table_names()
             assert "knowledge_bases" in inspector.get_table_names()
+        finally:
+            connection.rollback()
+            command.upgrade(alembic_config, "head")
+
+
+def test_chunk_migration_upgrades_and_downgrades(
+    postgres_engine: Engine,
+) -> None:
+    alembic_config = Config(str(BACKEND_ROOT / "alembic.ini"))
+
+    with postgres_engine.connect() as connection:
+        alembic_config.attributes["connection"] = connection
+        try:
+            command.downgrade(alembic_config, "0004")
+            inspector = inspect(connection)
+            assert "chunks" not in inspector.get_table_names()
+            assert "documents" in inspector.get_table_names()
+            assert connection.scalar(text("SELECT to_regtype('vector')")) is None
+
+            command.upgrade(alembic_config, "0005")
+            inspector = inspect(connection)
+            assert "chunks" in inspector.get_table_names()
+            assert {column["name"] for column in inspector.get_columns("chunks")} == {
+                "id",
+                "workspace_id",
+                "document_id",
+                "content",
+                "chunk_index",
+                "embedding_model",
+                "embedding",
+                "created_at",
+            }
+            assert {index["name"] for index in inspector.get_indexes("chunks")} >= {
+                "ix_chunks_document_id",
+                "ix_chunks_workspace_id",
+            }
+            assert {
+                constraint["name"] for constraint in inspector.get_unique_constraints("chunks")
+            } >= {"uq_chunks_document_index"}
+            assert {
+                constraint["name"]
+                for constraint in inspector.get_unique_constraints("documents")
+            } >= {"uq_documents_id_workspace_id"}
+            assert {
+                constraint["name"] for constraint in inspector.get_check_constraints("chunks")
+            } >= {
+                "ck_chunks_chunk_index_non_negative",
+                "ck_chunks_content_not_empty",
+            }
+            foreign_keys = {
+                tuple(foreign_key["constrained_columns"]): (
+                    foreign_key["referred_table"],
+                    foreign_key["options"].get("ondelete"),
+                )
+                for foreign_key in inspector.get_foreign_keys("chunks")
+            }
+            assert foreign_keys == {
+                ("document_id", "workspace_id"): ("documents", "RESTRICT"),
+                ("workspace_id",): ("workspaces", "RESTRICT"),
+            }
+            vector_type = connection.scalar(
+                text(
+                    "SELECT format_type(attribute.atttypid, attribute.atttypmod) "
+                    "FROM pg_attribute AS attribute "
+                    "JOIN pg_class AS relation ON relation.oid = attribute.attrelid "
+                    "WHERE relation.relname = 'chunks' "
+                    "AND attribute.attname = 'embedding'"
+                )
+            )
+            assert vector_type == "vector(1536)"
+
+            command.downgrade(alembic_config, "0004")
+            inspector = inspect(connection)
+            assert "chunks" not in inspector.get_table_names()
+            assert "documents" in inspector.get_table_names()
+            assert "uq_documents_id_workspace_id" not in {
+                constraint["name"]
+                for constraint in inspector.get_unique_constraints("documents")
+            }
+            assert connection.scalar(text("SELECT to_regtype('vector')")) is None
         finally:
             connection.rollback()
             command.upgrade(alembic_config, "head")

@@ -1,6 +1,6 @@
 # Feature 008 - RAG Retrieval Foundation
 
-Status: Proposed - Human Approval Required
+Status: Approved
 Milestone: 2
 
 ## 1. Goal
@@ -254,6 +254,9 @@ Indexes and constraints:
 - `ix_chunks_workspace_id`
 - `ix_chunks_document_id`
 - unique constraint on (`document_id`, `chunk_index`)
+- composite foreign key on (`document_id`, `workspace_id`) to the parent
+  Document, backed by a Feature 008 unique constraint on the corresponding
+  Document columns, so Chunk and Document Workspace ownership cannot diverge
 - check constraint for non-negative `chunk_index`
 - check constraint for non-empty `content`
 - foreign keys for `workspace_id` and `document_id`
@@ -486,9 +489,9 @@ Verification must include:
 SQLite must not replace PostgreSQL integration tests. Live OpenAI calls are not
 part of automated verification.
 
-## 12. Human Approval Required
+## 12. Approval Record
 
-Implementation must not begin until a human explicitly approves:
+Human approval was granted on 2026-09-16 for:
 
 - Alembic revision `0005`, creation of the `chunks` table, and enabling the
   PostgreSQL `vector` extension.
@@ -498,6 +501,11 @@ Implementation must not begin until a human explicitly approves:
   configured OpenAI API account.
 - The fixed OpenAI embedding model/dimension contract and exact-search design.
 - The indexing/search authorization and tenant-isolation policy.
+
+Approval additionally requires migrations `0001` through `0004` and the
+existing PostgreSQL data volume to remain untouched, exact Workspace filtering
+to occur before ranking, no live OpenAI calls in automated tests, and no
+approximate vector indexes or future roadmap functionality in this feature.
 
 ## 13. Out of Scope
 

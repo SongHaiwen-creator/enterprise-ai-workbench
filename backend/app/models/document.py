@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -31,6 +32,7 @@ class Document(Base):
             name="status_values",
         ),
         CheckConstraint("version > 0", name="version_positive"),
+        UniqueConstraint("id", "workspace_id", name="uq_documents_id_workspace_id"),
         Index("ix_documents_workspace_id", "workspace_id"),
         Index("ix_documents_knowledge_base_id", "knowledge_base_id"),
         Index("ix_documents_created_by", "created_by"),

@@ -115,7 +115,7 @@ def list_workspace_members(
         )
         .join(User, User.id == Membership.user_id)
         .where(Membership.workspace_id == workspace_id)
-        .order_by(User.name, User.email, Membership.id)
+        .order_by(User.name.collate("C"), User.email.collate("C"), Membership.id)
     )
     rows = session.execute(statement).all()
 
