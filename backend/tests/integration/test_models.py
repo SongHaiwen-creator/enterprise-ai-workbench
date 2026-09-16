@@ -5,8 +5,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import KnowledgeBase, Membership, User, Workspace
+from app.models import Document, KnowledgeBase, Membership, User, Workspace
 from app.models.enums import (
+    DocumentFileType,
+    DocumentStatus,
     KnowledgeBaseStatus,
     MembershipRole,
     MembershipStatus,
@@ -150,4 +152,97 @@ def test_knowledge_base_status_check_constraint_is_enforced(
                 "status": "unknown",
                 "created_by": creator.id,
             },
+        )
+
+
+def test_successful_document_insert(db_session: Session) -> None:
+    creator = User(email="document-creator@company.com", name="Creator")
+    workspace = Workspace(name="Document Workspace", slug="document-workspace")
+    db_session.add_all([creator, workspace])
+    db_session.flush()
+    knowledge_base = KnowledgeBase(
+        workspace_id=workspace.id,
+        name="Employee Policies",
+        created_by=creator.id,
+    )
+    db_session.add(knowledge_base)
+    db_session.flush()
+    document = Document(
+        workspace_id=workspace.id,
+        knowledge_base_id=knowledge_base.id,
+        file_name="handbook.md",
+        file_type=DocumentFileType.MARKDOWN,
+        created_by=creator.id,
+    )
+    db_session.add(document)
+    db_session.commit()
+
+    assert document.id is not None
+    assert document.status is DocumentStatus.UPLOADED
+    assert document.version == 1
+    assert document.extracted_text is None
+    assert document.processing_error is None
+    assert document.created_at is not None
+    assert document.updated_at is not None
+
+
+def test_document_foreign_keys_are_enforced(db_session: Session) -> None:
+    db_session.add(
+        Document(
+            workspace_id=uuid4(),
+            knowledge_base_id=uuid4(),
+            file_name="orphan.txt",
+            file_type=DocumentFileType.TXT,
+            created_by=uuid4(),
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("file_type", "docx"),
+        ("status", "unknown"),
+        ("version", 0),
+    ],
+)
+def test_document_check_constraints_are_enforced(
+    db_session: Session,
+    column: str,
+    value: str | int,
+) -> None:
+    creator = User(email=f"constraint-{column}@company.com", name="Creator")
+    workspace = Workspace(name=f"{column} Workspace", slug=f"constraint-{column}")
+    db_session.add_all([creator, workspace])
+    db_session.flush()
+    knowledge_base = KnowledgeBase(
+        workspace_id=workspace.id,
+        name="Policies",
+        created_by=creator.id,
+    )
+    db_session.add(knowledge_base)
+    db_session.flush()
+
+    values: dict[str, object] = {
+        "workspace_id": workspace.id,
+        "knowledge_base_id": knowledge_base.id,
+        "file_name": "policy.txt",
+        "file_type": "txt",
+        "status": "uploaded",
+        "version": 1,
+        "created_by": creator.id,
+    }
+    values[column] = value
+    with pytest.raises(IntegrityError):
+        db_session.execute(
+            text(
+                "INSERT INTO documents "
+                "(workspace_id, knowledge_base_id, file_name, file_type, status, "
+                "version, created_by) VALUES (:workspace_id, :knowledge_base_id, "
+                ":file_name, :file_type, :status, :version, :created_by)"
+            ),
+            values,
         )
