@@ -135,8 +135,8 @@ The implementation uses `RecursiveCharacterTextSplitter` with:
 
 Whitespace-only chunks are discarded. Remaining chunks preserve splitter
 output and receive zero-based, gap-free `chunk_index` values in source order.
-The configured size keeps every embedding input comfortably below the OpenAI
-per-input token limit without adding a tokenizer dependency.
+The configured size is supplemented by model-specific `tiktoken` validation;
+an input above the provider limit is rejected before any network request.
 
 ### BR-004 - Embedding contract
 
@@ -147,9 +147,11 @@ Index and query embeddings use:
 - dimensions: 1,536,
 - encoding format: floating-point values.
 
-Index inputs are sent in bounded batches of no more than 256 chunks. The
-implementation validates response count, response indexes, and vector
-dimensions before persistence.
+Index inputs are sent in deterministic, ordered batches of no more than 256
+chunks, no more than 8,192 tokens per input, and no more than the explicit
+290,000-token aggregate request budget. The implementation validates the
+response object, model, collection, unique in-range indexes, scalar types,
+finiteness, non-zero vectors, and dimensions before persistence.
 
 Changing provider, model, or dimensions is out of scope because stored and
 query vectors must share one compatible embedding space. A later model change
@@ -226,8 +228,8 @@ visibility is not authorization.
 
 ## 6. Database Contract
 
-Migration `0005` has `down_revision = "0004"` and must not modify any prior
-migration.
+Migration `0005` has `down_revision = "0004"`. Migration `0006` has
+`down_revision = "0005"`. Neither modifies migrations `0001` through `0004`.
 
 It will:
 
@@ -262,8 +264,15 @@ Indexes and constraints:
 - foreign keys for `workspace_id` and `document_id`
 
 No cascade deletion is introduced. Hard deletion remains out of scope.
-Downgrade drops only `chunks` and then drops the `vector` extension only when
-no remaining database object depends on it.
+Downgrade drops only Feature 008-owned relational objects. The shared `vector`
+extension remains installed whether it existed before `0005` or was enabled by
+`0005`.
+
+Migration `0006` adds a unique constraint on
+`knowledge_bases(id, workspace_id)` and an additive composite foreign key from
+`documents(knowledge_base_id, workspace_id)` to those columns with
+`ON DELETE RESTRICT`. Existing inconsistent rows are never repaired or deleted;
+they cause the transactional migration to fail atomically.
 
 ## 7. API / Data Contract
 
@@ -390,12 +399,16 @@ New runtime dependencies:
 
 - official `openai` Python SDK,
 - `pgvector` Python package,
-- `langchain-text-splitters>=1.1.2,<2.0`.
+- `langchain-text-splitters>=1.1.2,<2.0`,
+- `tiktoken>=0.12,<1.0` for model-specific token counting.
 
 Infrastructure dependency:
 
 - official `pgvector/pgvector` PostgreSQL 17 container image, pinned to an
-  explicit pgvector and PostgreSQL-major-compatible tag.
+  explicit pgvector and PostgreSQL-major-compatible tag,
+- a new Debian/Trixie PostgreSQL physical volume; the legacy Alpine volume is
+  never mounted into the new image and can only be migrated through the
+  separately approved logical backup/restore runbook.
 
 No API key value is added to `.env.example`; only an empty placeholder and
 documentation are allowed.
@@ -405,8 +418,9 @@ documentation are allowed.
 ### AC-001 - Migration and extension
 
 Revision `0005` upgrades from `0004`, enables pgvector, creates the specified
-table and constraints, reaches Alembic head without drift, and downgrades to
-`0004` without changing prior migrations or tables.
+table and constraints, and downgrades without removing the shared extension.
+Revision `0006` enforces Document-to-Knowledge-Base Workspace ownership and is
+fully additive. Head reaches `0006` without schema drift.
 
 ### AC-002 - Deterministic indexing
 
@@ -458,11 +472,13 @@ verification.
 
 Tests must cover:
 
-- `0004 -> 0005` migration, pgvector extension, schema, constraints, indexes,
-  head, downgrade, and schema drift.
+- `0004 -> 0005 -> 0006` migration, shared pgvector extension lifecycle,
+  schema, ownership constraints, inconsistent-row rollback, downgrade, and
+  schema drift.
 - Chunk model constraints and parent relationships in PostgreSQL.
 - Deterministic chunk boundaries, overlap, ordering, and whitespace handling.
-- Embedding batching, response ordering, count validation, and dimension
+- Token-aware embedding batching with high-density CJK/Unicode/emoji inputs,
+  response ordering, structural and scalar validation, and dimension
   validation with a fake client.
 - First-time indexing and successful atomic re-indexing.
 - Preservation of old chunks after simulated splitter, provider, validation,
@@ -506,6 +522,12 @@ Approval additionally requires migrations `0001` through `0004` and the
 existing PostgreSQL data volume to remain untouched, exact Workspace filtering
 to occur before ranking, no live OpenAI calls in automated tests, and no
 approximate vector indexes or future roadmap functionality in this feature.
+
+On 2026-09-17, remediation approval additionally covered migration `0006`, the
+shared extension lifecycle, the `tiktoken` dependency, malformed-response
+hardening, a new pgvector data volume, and a logical migration runbook. It did
+not approve executing that runbook or altering the existing development data
+volume; immediate separate human approval is required before those operations.
 
 ## 13. Out of Scope
 

@@ -1,5 +1,6 @@
 from collections.abc import Generator, Sequence
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -22,7 +23,7 @@ from app.models.enums import (
 )
 from app.security.tokens import create_access_token
 from app.services import retrieval as retrieval_service
-from app.services.embeddings import EmbeddingProviderError
+from app.services.embeddings import EmbeddingProviderError, OpenAIEmbeddingProvider
 
 pytestmark = pytest.mark.integration
 JWT_SECRET = "retrieval-api-secret-longer-than-thirty-two-bytes"
@@ -68,6 +69,17 @@ class WrongDimensionEmbeddingProvider(FakeEmbeddingProvider):
 class ZeroEmbeddingProvider(FakeEmbeddingProvider):
     def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         return [[0.0] * self.dimensions for _ in texts]
+
+
+class Utf8TokenEncoding:
+    def encode(
+        self,
+        text: str,
+        *,
+        disallowed_special: object = (),
+    ) -> list[int]:
+        del disallowed_special
+        return list(text.encode("utf-8"))
 
 
 @pytest.fixture
@@ -474,6 +486,52 @@ def test_invalid_embedding_response_preserves_existing_chunks(
         select(Chunk).where(Chunk.document_id == document.id)
     ).all()
     assert [chunk.id for chunk in persisted] == [old_chunk.id]
+
+
+@pytest.mark.parametrize("operation", ["index", "search"])
+def test_malformed_openai_response_returns_502_and_preserves_chunks(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    operation: str,
+) -> None:
+    caller = create_user(db_session, email=f"malformed-{operation}@company.com")
+    workspace = create_workspace(db_session, slug=f"malformed-{operation}")
+    add_membership(db_session, caller, workspace, role=MembershipRole.KNOWLEDGE_ADMIN)
+    knowledge_base = create_knowledge_base(db_session, workspace, caller)
+    document = create_document(db_session, workspace, knowledge_base, caller)
+    old_chunk = add_chunk(db_session, workspace, document, content="Existing content")
+    old_chunk_id = old_chunk.id
+    malformed_response = SimpleNamespace(
+        model=EMBEDDING_MODEL,
+        data=[SimpleNamespace(index=0, embedding=[1.0, *(["invalid"] * 1535)])],
+    )
+    resource = SimpleNamespace(create=lambda **kwargs: malformed_response)
+    provider = OpenAIEmbeddingProvider(
+        SimpleNamespace(embeddings=resource),  # type: ignore[arg-type]
+        model=EMBEDDING_MODEL,
+        dimensions=EMBEDDING_DIMENSIONS,
+        encoding=Utf8TokenEncoding(),
+    )
+    app.dependency_overrides[get_embedding_provider] = lambda: provider
+    path = (
+        index_path(workspace, knowledge_base, document)
+        if operation == "index"
+        else f"{base_path(workspace, knowledge_base)}/search"
+    )
+
+    response = client.post(
+        path,
+        headers=bearer(caller, auth_settings),
+        json={"query": "travel"} if operation == "search" else None,
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Embedding provider request failed"}
+    persisted = db_session.scalars(
+        select(Chunk).where(Chunk.document_id == document.id)
+    ).all()
+    assert [chunk.id for chunk in persisted] == [old_chunk_id]
 
 
 def test_zero_query_embedding_returns_sanitized_provider_failure(

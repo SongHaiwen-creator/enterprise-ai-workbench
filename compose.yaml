@@ -10,7 +10,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_pgvector_data:/var/lib/postgresql/data
       - ./backend/docker/postgres/init/001-create-test-database.sql:/docker-entrypoint-initdb.d/001-create-test-database.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -20,4 +20,4 @@ services:
       start_period: 5s
 
 volumes:
-  postgres_data:
+  postgres_pgvector_data:

@@ -201,6 +201,33 @@ def test_document_foreign_keys_are_enforced(db_session: Session) -> None:
         db_session.flush()
 
 
+def test_document_workspace_must_match_knowledge_base(db_session: Session) -> None:
+    creator = User(email="document-workspace-owner@company.com", name="Creator")
+    workspace = Workspace(name="Knowledge Base Owner", slug="knowledge-base-owner")
+    other_workspace = Workspace(name="Other Document Owner", slug="other-document-owner")
+    db_session.add_all([creator, workspace, other_workspace])
+    db_session.flush()
+    knowledge_base = KnowledgeBase(
+        workspace_id=workspace.id,
+        name="Policies",
+        created_by=creator.id,
+    )
+    db_session.add(knowledge_base)
+    db_session.flush()
+    db_session.add(
+        Document(
+            workspace_id=other_workspace.id,
+            knowledge_base_id=knowledge_base.id,
+            file_name="cross-workspace.txt",
+            file_type=DocumentFileType.TXT,
+            created_by=creator.id,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
 @pytest.mark.parametrize(
     ("column", "value"),
     [

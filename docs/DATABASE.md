@@ -185,6 +185,12 @@ the original uploaded binary. New documents start at version 1; replacement
 and automatic version management are deferred until a stable document-family
 model is defined.
 
+Feature 008 migration `0006` adds a composite foreign key from
+`documents(knowledge_base_id, workspace_id)` to
+`knowledge_bases(id, workspace_id)`. A Document therefore cannot reference a
+Knowledge Base owned by another Workspace. Existing single-column foreign keys
+remain in place.
+
 ---
 
 # 8. Chunk

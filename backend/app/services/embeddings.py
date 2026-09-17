@@ -1,12 +1,16 @@
 from collections.abc import Sequence
 from math import isfinite
+from numbers import Real
 from typing import Protocol
 
+import tiktoken
 from openai import APIError, OpenAI
 
 from app.core.config import Settings
 
 EMBEDDING_BATCH_SIZE = 256
+EMBEDDING_MAX_INPUT_TOKENS = 8_192
+EMBEDDING_REQUEST_TOKEN_BUDGET = 290_000
 EMBEDDING_PROVIDER_FAILURE = "Embedding provider request failed"
 
 
@@ -25,12 +29,37 @@ class EmbeddingProvider(Protocol):
     def embed_texts(self, texts: Sequence[str]) -> list[list[float]]: ...
 
 
-def is_valid_embedding(vector: Sequence[float], dimensions: int) -> bool:
-    return (
-        len(vector) == dimensions
-        and all(isfinite(value) for value in vector)
-        and any(value != 0.0 for value in vector)
-    )
+class TokenEncoding(Protocol):
+    def encode(
+        self,
+        text: str,
+        *,
+        disallowed_special: object = ...,
+    ) -> list[int]: ...
+
+
+def normalize_embedding(vector: object, dimensions: int) -> list[float] | None:
+    if (
+        not isinstance(vector, Sequence)
+        or isinstance(vector, (str, bytes, bytearray))
+        or len(vector) != dimensions
+    ):
+        return None
+
+    normalized: list[float] = []
+    for value in vector:
+        if isinstance(value, bool) or not isinstance(value, Real):
+            return None
+        try:
+            normalized_value = float(value)
+        except (OverflowError, TypeError, ValueError):
+            return None
+        if not isfinite(normalized_value):
+            return None
+        normalized.append(normalized_value)
+    if not any(value != 0.0 for value in normalized):
+        return None
+    return normalized
 
 
 class OpenAIEmbeddingProvider:
@@ -40,18 +69,94 @@ class OpenAIEmbeddingProvider:
         *,
         model: str,
         dimensions: int,
+        encoding: TokenEncoding | None = None,
     ) -> None:
         self.client = client
         self.model = model
         self.dimensions = dimensions
+        if encoding is not None:
+            self.encoding = encoding
+        else:
+            try:
+                self.encoding = tiktoken.encoding_for_model(model)
+            except (KeyError, OSError, ValueError) as exc:
+                raise EmbeddingConfigurationError(
+                    "Embedding tokenizer is not configured"
+                ) from exc
+
+    def _batches(self, texts: Sequence[str]) -> list[list[str]]:
+        batches: list[list[str]] = []
+        batch: list[str] = []
+        batch_tokens = 0
+
+        for text in texts:
+            if not isinstance(text, str) or not text:
+                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
+            try:
+                token_count = len(self.encoding.encode(text, disallowed_special=()))
+            except (TypeError, UnicodeError, ValueError) as exc:
+                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE) from exc
+            if token_count == 0 or token_count > EMBEDDING_MAX_INPUT_TOKENS:
+                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
+
+            if batch and (
+                len(batch) >= EMBEDDING_BATCH_SIZE
+                or batch_tokens + token_count > EMBEDDING_REQUEST_TOKEN_BUDGET
+            ):
+                batches.append(batch)
+                batch = []
+                batch_tokens = 0
+            batch.append(text)
+            batch_tokens += token_count
+
+        if batch:
+            batches.append(batch)
+        return batches
+
+    def _validated_response(self, response: object, batch_size: int) -> list[list[float]]:
+        try:
+            response_model = response.model  # type: ignore[attr-defined]
+            response_data = response.data  # type: ignore[attr-defined]
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE) from exc
+
+        if (
+            not isinstance(response_model, str)
+            or response_model != self.model
+            or not isinstance(response_data, list)
+        ):
+            raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
+        if len(response_data) != batch_size:
+            raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
+
+        indexed: dict[int, list[float]] = {}
+        for item in response_data:
+            try:
+                index = item.index
+                vector = item.embedding
+            except (AttributeError, TypeError, ValueError) as exc:
+                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE) from exc
+            if (
+                isinstance(index, bool)
+                or not isinstance(index, int)
+                or index < 0
+                or index >= batch_size
+                or index in indexed
+            ):
+                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
+            normalized = normalize_embedding(vector, self.dimensions)
+            if normalized is None:
+                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
+            indexed[index] = normalized
+
+        return [indexed[index] for index in range(batch_size)]
 
     def embed_texts(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
 
         embeddings: list[list[float]] = []
-        for start in range(0, len(texts), EMBEDDING_BATCH_SIZE):
-            batch = list(texts[start : start + EMBEDDING_BATCH_SIZE])
+        for batch in self._batches(texts):
             try:
                 response = self.client.embeddings.create(
                     input=batch,
@@ -59,20 +164,9 @@ class OpenAIEmbeddingProvider:
                     dimensions=self.dimensions,
                     encoding_format="float",
                 )
-            except APIError as exc:
+            except (APIError, AttributeError, TypeError, ValueError) as exc:
                 raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE) from exc
-
-            if response.model != self.model:
-                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
-
-            indexed = {item.index: item.embedding for item in response.data}
-            if len(response.data) != len(batch) or set(indexed) != set(range(len(batch))):
-                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
-
-            ordered = [indexed[index] for index in range(len(batch))]
-            if any(not is_valid_embedding(vector, self.dimensions) for vector in ordered):
-                raise EmbeddingProviderError(EMBEDDING_PROVIDER_FAILURE)
-            embeddings.extend(ordered)
+            embeddings.extend(self._validated_response(response, len(batch)))
 
         return embeddings
 

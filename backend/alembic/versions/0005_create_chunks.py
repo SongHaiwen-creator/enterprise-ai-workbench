@@ -85,4 +85,3 @@ def downgrade() -> None:
         "documents",
         type_="unique",
     )
-    op.execute("DROP EXTENSION IF EXISTS vector")

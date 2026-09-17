@@ -12,7 +12,7 @@ from app.services.documents import get_document
 from app.services.embeddings import (
     EmbeddingProvider,
     EmbeddingProviderError,
-    is_valid_embedding,
+    normalize_embedding,
 )
 from app.services.exceptions import ConflictError
 from app.services.knowledge_bases import get_knowledge_base
@@ -42,12 +42,22 @@ def _validated_embeddings(
     provider: EmbeddingProvider,
     texts: list[str],
 ) -> list[list[float]]:
-    embeddings = provider.embed_texts(texts)
-    if len(embeddings) != len(texts):
+    try:
+        embeddings = provider.embed_texts(texts)
+    except EmbeddingProviderError:
+        raise
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise EmbeddingProviderError("Embedding provider request failed") from exc
+    if not isinstance(embeddings, list) or len(embeddings) != len(texts):
         raise EmbeddingProviderError("Embedding provider request failed")
-    if any(not is_valid_embedding(embedding, provider.dimensions) for embedding in embeddings):
-        raise EmbeddingProviderError("Embedding provider request failed")
-    return embeddings
+
+    normalized: list[list[float]] = []
+    for embedding in embeddings:
+        vector = normalize_embedding(embedding, provider.dimensions)
+        if vector is None:
+            raise EmbeddingProviderError("Embedding provider request failed")
+        normalized.append(vector)
+    return normalized
 
 
 def index_document(
