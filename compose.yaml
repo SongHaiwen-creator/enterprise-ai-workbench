@@ -1,7 +1,9 @@
 name: enterprise-ai-workbench
 
 services:
-  postgres:
+  # Keep this identity distinct from the legacy `postgres` service so Compose
+  # cannot restart an old container whose mount still targets postgres_data.
+  postgres_pgvector:
     image: pgvector/pgvector:0.8.6-pg17-trixie
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-workbench}
