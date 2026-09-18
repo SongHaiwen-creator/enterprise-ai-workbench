@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Document, KnowledgeBase, Membership, User, Workspace
+from app.models import Chunk, Document, KnowledgeBase, Membership, User, Workspace
 from app.models.enums import (
     DocumentFileType,
     DocumentStatus,
@@ -201,6 +201,33 @@ def test_document_foreign_keys_are_enforced(db_session: Session) -> None:
         db_session.flush()
 
 
+def test_document_workspace_must_match_knowledge_base(db_session: Session) -> None:
+    creator = User(email="document-workspace-owner@company.com", name="Creator")
+    workspace = Workspace(name="Knowledge Base Owner", slug="knowledge-base-owner")
+    other_workspace = Workspace(name="Other Document Owner", slug="other-document-owner")
+    db_session.add_all([creator, workspace, other_workspace])
+    db_session.flush()
+    knowledge_base = KnowledgeBase(
+        workspace_id=workspace.id,
+        name="Policies",
+        created_by=creator.id,
+    )
+    db_session.add(knowledge_base)
+    db_session.flush()
+    db_session.add(
+        Document(
+            workspace_id=other_workspace.id,
+            knowledge_base_id=knowledge_base.id,
+            file_name="cross-workspace.txt",
+            file_type=DocumentFileType.TXT,
+            created_by=creator.id,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
 @pytest.mark.parametrize(
     ("column", "value"),
     [
@@ -246,3 +273,146 @@ def test_document_check_constraints_are_enforced(
             ),
             values,
         )
+
+
+def test_successful_chunk_insert(db_session: Session) -> None:
+    creator = User(email="chunk-creator@company.com", name="Creator")
+    workspace = Workspace(name="Chunk Workspace", slug="chunk-workspace")
+    db_session.add_all([creator, workspace])
+    db_session.flush()
+    knowledge_base = KnowledgeBase(
+        workspace_id=workspace.id,
+        name="Policies",
+        created_by=creator.id,
+    )
+    db_session.add(knowledge_base)
+    db_session.flush()
+    document = Document(
+        workspace_id=workspace.id,
+        knowledge_base_id=knowledge_base.id,
+        file_name="policy.txt",
+        file_type=DocumentFileType.TXT,
+        status=DocumentStatus.READY,
+        extracted_text="Policy text",
+        created_by=creator.id,
+    )
+    db_session.add(document)
+    db_session.flush()
+    chunk = Chunk(
+        workspace_id=workspace.id,
+        document_id=document.id,
+        content="Policy text",
+        chunk_index=0,
+        embedding_model="text-embedding-3-small",
+        embedding=[0.0] * 1536,
+    )
+    db_session.add(chunk)
+    db_session.commit()
+
+    assert chunk.id is not None
+    assert chunk.created_at is not None
+    assert len(chunk.embedding) == 1536
+
+
+@pytest.mark.parametrize(
+    ("content", "chunk_index"),
+    [("", 0), ("   ", 0), ("valid", -1)],
+)
+def test_chunk_check_constraints_are_enforced(
+    db_session: Session,
+    content: str,
+    chunk_index: int,
+) -> None:
+    creator = User(email=f"chunk-{chunk_index}-{len(content)}@company.com", name="Creator")
+    workspace = Workspace(
+        name=f"Chunk Constraint {chunk_index} {len(content)}",
+        slug=f"chunk-constraint-{chunk_index + 1}-{len(content)}",
+    )
+    db_session.add_all([creator, workspace])
+    db_session.flush()
+    knowledge_base = KnowledgeBase(
+        workspace_id=workspace.id,
+        name="Policies",
+        created_by=creator.id,
+    )
+    db_session.add(knowledge_base)
+    db_session.flush()
+    document = Document(
+        workspace_id=workspace.id,
+        knowledge_base_id=knowledge_base.id,
+        file_name="policy.txt",
+        file_type=DocumentFileType.TXT,
+        status=DocumentStatus.READY,
+        extracted_text="Policy text",
+        created_by=creator.id,
+    )
+    db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        Chunk(
+            workspace_id=workspace.id,
+            document_id=document.id,
+            content=content,
+            chunk_index=chunk_index,
+            embedding_model="text-embedding-3-small",
+            embedding=[0.0] * 1536,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+def test_chunk_foreign_keys_are_enforced(db_session: Session) -> None:
+    db_session.add(
+        Chunk(
+            workspace_id=uuid4(),
+            document_id=uuid4(),
+            content="Orphan chunk",
+            chunk_index=0,
+            embedding_model="text-embedding-3-small",
+            embedding=[0.0] * 1536,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+
+
+def test_chunk_workspace_must_match_parent_document(db_session: Session) -> None:
+    creator = User(email="chunk-workspace-owner@company.com", name="Creator")
+    workspace = Workspace(name="Chunk Owner", slug="chunk-owner")
+    other_workspace = Workspace(name="Other Owner", slug="other-owner")
+    db_session.add_all([creator, workspace, other_workspace])
+    db_session.flush()
+    knowledge_base = KnowledgeBase(
+        workspace_id=workspace.id,
+        name="Policies",
+        created_by=creator.id,
+    )
+    db_session.add(knowledge_base)
+    db_session.flush()
+    document = Document(
+        workspace_id=workspace.id,
+        knowledge_base_id=knowledge_base.id,
+        file_name="policy.txt",
+        file_type=DocumentFileType.TXT,
+        status=DocumentStatus.READY,
+        extracted_text="Policy text",
+        created_by=creator.id,
+    )
+    db_session.add(document)
+    db_session.flush()
+    db_session.add(
+        Chunk(
+            workspace_id=other_workspace.id,
+            document_id=document.id,
+            content="Cross-workspace chunk",
+            chunk_index=0,
+            embedding_model="text-embedding-3-small",
+            embedding=[0.0] * 1536,
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.flush()

@@ -20,6 +20,7 @@ from app.schemas.knowledge_base import (
     KnowledgeBaseUpdate,
 )
 from app.schemas.membership import MembershipResponse, MembershipUpdate
+from app.schemas.retrieval import KnowledgeSearchRequest
 from app.schemas.workspace import WorkspaceCreate, WorkspaceResponse
 
 
@@ -76,6 +77,32 @@ def test_document_status_update_only_accepts_manageable_statuses(
 ) -> None:
     with pytest.raises(ValidationError):
         DocumentStatusUpdate.model_validate(payload)
+
+
+def test_knowledge_search_request_normalizes_query_and_defaults_limit() -> None:
+    payload = KnowledgeSearchRequest(query="  reimbursement policy  ")
+
+    assert payload.query == "reimbursement policy"
+    assert payload.limit == 5
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"query": ""},
+        {"query": " "},
+        {"query": "x" * 2001},
+        {"query": "valid", "limit": 0},
+        {"query": "valid", "limit": 21},
+        {"query": "valid", "unknown": True},
+    ],
+)
+def test_knowledge_search_request_rejects_invalid_payloads(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        KnowledgeSearchRequest.model_validate(payload)
 
 
 def test_orm_response_models_read_attributes() -> None:

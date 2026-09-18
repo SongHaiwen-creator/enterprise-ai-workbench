@@ -1,7 +1,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -13,6 +23,7 @@ class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
     __table_args__ = (
         CheckConstraint("status IN ('active', 'disabled')", name="status_values"),
+        UniqueConstraint("id", "workspace_id", name="uq_knowledge_bases_id_workspace_id"),
         Index("ix_knowledge_bases_workspace_id", "workspace_id"),
         Index("ix_knowledge_bases_created_by", "created_by"),
     )

@@ -185,6 +185,12 @@ the original uploaded binary. New documents start at version 1; replacement
 and automatic version management are deferred until a stable document-family
 model is defined.
 
+Feature 008 migration `0006` adds a composite foreign key from
+`documents(knowledge_base_id, workspace_id)` to
+`knowledge_bases(id, workspace_id)`. A Document therefore cannot reference a
+Knowledge Base owned by another Workspace. Existing single-column foreign keys
+remain in place.
+
 ---
 
 # 8. Chunk
@@ -202,10 +208,19 @@ Fields:
 | document_id | UUID | Foreign key → documents.id |
 | content | TEXT | Chunk text |
 | chunk_index | INTEGER | Order inside document |
-| embedding | VECTOR | Vector representation |
+| embedding_model | VARCHAR | Embedding model used for the vector |
+| embedding | VECTOR(1536) | Vector representation |
 | created_at | TIMESTAMP | Creation time |
 
 Chunks are used for RAG retrieval.
+
+Feature 008 uses `text-embedding-3-small` with 1,536 dimensions and exact
+cosine-distance search. Chunks are created or atomically replaced only through
+the workspace-scoped Document indexing operation. Retrieval joins each Chunk
+through its Document and filters the target Workspace, Knowledge Base, and
+ready Document status before ranking. Approximate vector indexes are deferred.
+A composite foreign key enforces that each Chunk's `workspace_id` matches its
+parent Document's Workspace.
 
 ---
 

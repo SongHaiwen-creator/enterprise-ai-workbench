@@ -11,12 +11,16 @@ dependencies = [
     "alembic>=1.19.2,<1.20",
     "argon2-cffi>=25.1.0,<26.0",
     "fastapi>=0.115,<1.0",
+    "langchain-text-splitters>=1.1.2,<2.0",
+    "openai>=3.8,<4.0",
+    "pgvector>=0.4,<0.5",
     "pypdf>=6.0,<7.0",
     "psycopg[binary]>=3.3.5,<3.4",
     "pydantic-settings>=2.15.0,<3.0",
     "PyJWT>=2.14.0,<3.0",
     "python-multipart>=0.0.20,<1.0",
     "sqlalchemy>=2.0.52,<2.1",
+    "tiktoken>=0.12,<1.0",
     "uvicorn[standard]>=0.30,<1.0",
 ]
 
