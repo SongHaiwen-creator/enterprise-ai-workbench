@@ -1,6 +1,6 @@
 # Feature 009 - Grounded RAG Answer and Citation
 
-Status: Proposed - awaiting generation-provider approval
+Status: Approved - implementation in progress
 Milestone: 2
 
 ## 1. Goal
@@ -178,9 +178,9 @@ The backend then maps each validated evidence label to the server-owned
 retrieval result and emits the real Document and Chunk metadata. Arbitrary
 model-generated identifiers are never accepted.
 
-Duplicate evidence labels are collapsed in first-use order. Citation order is
-deterministic. Citation excerpts contain only the model-selected, verified
-substring and never more than 500 characters.
+Duplicate evidence labels fail validation rather than being silently
+collapsed. Citation order is deterministic. Citation excerpts contain only
+the model-selected, verified substring and never more than 500 characters.
 
 ### BR-007 - Generation provider boundary
 
@@ -280,7 +280,18 @@ Answered response: `200 OK`
       "chunk_index": 3,
       "excerpt": "...exact excerpt from the retrieved chunk..."
     }
-  ]
+  ],
+  "generation": {
+    "model": "gpt-5.6-terra",
+    "reasoning_effort": "low",
+    "retrieval_limit": 5,
+    "prompt_version": "grounded-answer-v1",
+    "max_input_tokens": 12000,
+    "max_output_tokens": 1200,
+    "input_tokens": 1540,
+    "output_tokens": 210,
+    "total_tokens": 1750
+  }
 }
 ```
 
@@ -292,7 +303,18 @@ Unsupported response: `200 OK`
   "status": "unsupported",
   "answer": null,
   "message": "The retrieved knowledge does not contain enough evidence to answer this question.",
-  "citations": []
+  "citations": [],
+  "generation": {
+    "model": "gpt-5.6-terra",
+    "reasoning_effort": "low",
+    "retrieval_limit": 5,
+    "prompt_version": "grounded-answer-v1",
+    "max_input_tokens": 12000,
+    "max_output_tokens": 1200,
+    "input_tokens": null,
+    "output_tokens": null,
+    "total_tokens": null
+  }
 }
 ```
 
@@ -302,6 +324,8 @@ Errors:
 - `403 Forbidden`: missing active Workspace Membership.
 - `404 Not Found`: scoped Workspace or Knowledge Base not found.
 - `409 Conflict`: Knowledge Base is disabled.
+- `422 Unprocessable Entity`: the complete deterministic application input
+  exceeds the configured 12,000-token budget; no generation call is made.
 - `502 Bad Gateway`: sanitized embedding or generation provider failure, or
   invalid generation output.
 - `503 Service Unavailable`: required embedding or generation provider is not
@@ -448,13 +472,12 @@ validated manifest file name. It preserves `question_id`, `question_type`, and
 The retrieval baseline includes at minimum:
 
 - **Retrieval Hit@3:** for answerable questions, the fraction where at least
-  one expected Document appears among the first three unique retrieved
-  Documents.
+  one expected Document appears among the first three ranked Chunk results.
 - **Retrieval Hit@5:** for answerable questions, the fraction where at least
-  one expected Document appears among the first five unique retrieved
-  Documents.
+  one expected Document appears among the first five ranked Chunk results.
 - **Document Recall@5:** macro-average across answerable questions of
-  `|expected_doc_ids intersect retrieved_doc_ids_at_5| / |expected_doc_ids|`.
+  `|expected_doc_ids intersect document IDs in the first five Chunk results|
+  / |expected_doc_ids|`.
 
 The two `info_not_found` questions have no expected Documents and are excluded
 from retrieval-hit and document-recall denominators. Counts and denominators
@@ -638,5 +661,20 @@ following proposed terms:
 8. **Dependencies:** no new runtime dependency; reuse `openai`, Pydantic, and
    tiktoken already present in the backend.
 
-Implementation of the live generation provider must stop until this approval
-is recorded here.
+Human approval was granted on 2026-09-20 for all terms above, with these
+clarifications incorporated into the implementation contract:
+
+- the 12,000-token limit is an application cost/evidence budget, not a model
+  context-window claim,
+- the complete instructions, serialized question/evidence, and strict output
+  schema are counted deterministically before the request,
+- over-budget input returns a documented sanitized application error without
+  truncation or a provider call,
+- duplicate citations fail validation rather than being collapsed,
+- benchmark records include the generation model, reasoning effort, retrieval
+  limit, prompt/schema version, fixed budgets, and token usage when available.
+
+No further approval is required for the scoped implementation. A new human
+gate is still required if implementation would change authentication,
+authorization, tenant isolation, database schema, the approved external data
+boundary, dependencies, or architecture.

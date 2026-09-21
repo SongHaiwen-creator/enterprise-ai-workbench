@@ -13,6 +13,7 @@ from app.models.enums import (
     MembershipStatus,
     WorkspaceStatus,
 )
+from app.schemas.answer import GroundedAnswerRequest
 from app.schemas.document import DocumentResponse, DocumentStatusUpdate
 from app.schemas.knowledge_base import (
     KnowledgeBaseCreate,
@@ -103,6 +104,29 @@ def test_knowledge_search_request_rejects_invalid_payloads(
 ) -> None:
     with pytest.raises(ValidationError):
         KnowledgeSearchRequest.model_validate(payload)
+
+
+def test_grounded_answer_request_normalizes_question() -> None:
+    payload = GroundedAnswerRequest(question="  reimbursement policy  ")
+
+    assert payload.question == "reimbursement policy"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"question": ""},
+        {"question": " "},
+        {"question": "x" * 2001},
+        {"question": "valid", "unknown": True},
+    ],
+)
+def test_grounded_answer_request_rejects_invalid_payloads(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        GroundedAnswerRequest.model_validate(payload)
 
 
 def test_orm_response_models_read_attributes() -> None:
