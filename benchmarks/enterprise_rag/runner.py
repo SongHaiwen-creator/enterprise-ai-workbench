@@ -212,6 +212,14 @@ class WorkbenchClient:
         response.raise_for_status()
         return response.json()
 
+    def list_documents(self) -> list[dict[str, Any]]:
+        response = self.client.get(f"{self.knowledge_base_path}/documents")
+        response.raise_for_status()
+        documents = response.json()
+        if not isinstance(documents, list):
+            raise TypeError("Document list response is invalid")
+        return documents
+
     def index(self, document_id: str) -> dict[str, Any]:
         response = self.client.post(
             f"{self.knowledge_base_path}/documents/{document_id}/index"
@@ -268,20 +276,99 @@ def load_state(path: Path, benchmark: ValidatedBenchmark) -> dict[str, Any]:
     return {"metadata": expected_metadata, "documents": {}}
 
 
+def _target(client: WorkbenchClient) -> dict[str, str]:
+    return {
+        "workspace_id": client.workspace_id,
+        "knowledge_base_id": client.knowledge_base_id,
+    }
+
+
+def preflight_benchmark_knowledge_base(
+    client: WorkbenchClient,
+    benchmark: ValidatedBenchmark,
+    state_path: Path,
+    *,
+    allow_fresh: bool,
+    require_complete: bool,
+) -> dict[str, Any] | None:
+    """Enforce that the target KB contains only this saved benchmark corpus."""
+    product_documents = client.list_documents()
+    if not state_path.exists():
+        if not allow_fresh:
+            raise ValueError("Benchmark ingest state is required before this stage")
+        if product_documents:
+            raise ValueError(
+                "A fresh benchmark run requires a dedicated empty Knowledge Base"
+            )
+        return None
+
+    state = load_state(state_path, benchmark)
+    if state.get("target") != _target(client):
+        raise ValueError("Benchmark state belongs to a different product target")
+
+    saved_documents = state["documents"]
+    manifest_file_names = {
+        item["doc_id"]: item["file_name"] for item in benchmark.manifest
+    }
+    manifest_ids = set(manifest_file_names)
+    if not set(saved_documents).issubset(manifest_ids):
+        raise ValueError("Benchmark state contains documents outside the selected corpus")
+    if require_complete and (
+        set(saved_documents) != manifest_ids
+        or any(item.get("status") != "indexed" for item in saved_documents.values())
+    ):
+        raise ValueError("Benchmark corpus ingestion is not complete")
+
+    expected_by_product_id: dict[str, dict[str, Any]] = {}
+    for doc_id, record in saved_documents.items():
+        product_id = record.get("product_document_id")
+        file_name = record.get("file_name")
+        if not isinstance(product_id, str) or not isinstance(file_name, str):
+            raise TypeError("Benchmark ingest state contains an invalid document record")
+        if file_name != manifest_file_names[doc_id]:
+            raise ValueError("Benchmark ingest state file names do not match the corpus")
+        if product_id in expected_by_product_id:
+            raise ValueError("Benchmark ingest state reuses a product document")
+        expected_by_product_id[product_id] = record
+
+    actual_by_id: dict[str, dict[str, Any]] = {}
+    for document in product_documents:
+        product_id = document.get("id")
+        if not isinstance(product_id, str) or product_id in actual_by_id:
+            raise ValueError("Knowledge Base returned an invalid document list")
+        actual_by_id[product_id] = document
+
+    if set(actual_by_id) != set(expected_by_product_id):
+        raise ValueError(
+            "Dedicated benchmark Knowledge Base documents do not match ingest state"
+        )
+    for product_id, expected in expected_by_product_id.items():
+        actual = actual_by_id[product_id]
+        if (
+            actual.get("file_name") != expected["file_name"]
+            or actual.get("status") != "ready"
+        ):
+            raise ValueError(
+                "Dedicated benchmark Knowledge Base documents do not match ingest state"
+            )
+    return state
+
+
 def ingest_corpus(
     client: WorkbenchClient,
     benchmark: ValidatedBenchmark,
     state_path: Path,
 ) -> dict[str, Any]:
-    state = load_state(state_path, benchmark)
-    target = {
-        "workspace_id": client.workspace_id,
-        "knowledge_base_id": client.knowledge_base_id,
-    }
-    if "target" not in state:
-        state["target"] = target
-    elif state["target"] != target:
-        raise ValueError("Benchmark state belongs to a different product target")
+    state = preflight_benchmark_knowledge_base(
+        client,
+        benchmark,
+        state_path,
+        allow_fresh=True,
+        require_complete=False,
+    )
+    if state is None:
+        state = load_state(state_path, benchmark)
+        state["target"] = _target(client)
     documents = state["documents"]
     for item in benchmark.manifest:
         doc_id = item["doc_id"]
@@ -324,17 +411,123 @@ def retrieved_doc_ids(
     return retrieved
 
 
-def retrieval_metrics(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    answerable = [record for record in records if record["expected_doc_ids"]]
-    if not answerable:
+def _request_summary(
+    records: Sequence[dict[str, Any]], total_questions: int
+) -> dict[str, int]:
+    successful = sum(
+        record.get("request_status", "success") == "success" for record in records
+    )
+    failed = sum(record.get("request_status") == "failure" for record in records)
+    return {
+        "total": total_questions,
+        "completed": successful + failed,
+        "successful": successful,
+        "failed": failed,
+        "pending": total_questions - successful - failed,
+    }
+
+
+def _failure_details(exc: Exception) -> dict[str, Any]:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return {"type": "http_error", "http_status": exc.response.status_code}
+    if isinstance(exc, httpx.TimeoutException):
+        return {"type": "timeout", "http_status": None}
+    if isinstance(exc, httpx.RequestError):
+        return {"type": "request_error", "http_status": None}
+    return {"type": "invalid_response", "http_status": None}
+
+
+def _failure_record(question: dict[str, Any], exc: Exception) -> dict[str, Any]:
+    return {
+        "question_id": question["question_id"],
+        "question_type": question["question_type"],
+        "expected_doc_ids": question["expected_doc_ids"],
+        "request_status": "failure",
+        "failure": _failure_details(exc),
+    }
+
+
+def _load_checkpoint(
+    path: Path,
+    benchmark: ValidatedBenchmark,
+    run_type: str,
+) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    expected_metadata = run_metadata(benchmark)
+    if not path.exists():
+        return {**expected_metadata, "run_type": run_type}, {}
+    payload = load_json(path)
+    if not isinstance(payload, dict) or not isinstance(payload.get("questions"), list):
+        raise TypeError("Benchmark checkpoint is invalid")
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict) or metadata.get("run_type") != run_type:
+        raise ValueError("Benchmark checkpoint has an incompatible run type")
+    fingerprint_keys = (
+        "source",
+        "manifest_sha256",
+        "questions_sha256",
+        "selection_report_sha256",
+        "document_count",
+        "question_count",
+        "retrieval_limit",
+    )
+    if any(metadata.get(key) != expected_metadata[key] for key in fingerprint_keys):
+        raise ValueError("Benchmark checkpoint does not match the selected corpus")
+
+    questions_by_id = {question["question_id"]: question for question in benchmark.questions}
+    records: dict[str, dict[str, Any]] = {}
+    for record in payload["questions"]:
+        if not isinstance(record, dict):
+            raise TypeError("Benchmark checkpoint contains an invalid question record")
+        question_id = record.get("question_id")
+        question = questions_by_id.get(question_id)
+        if (
+            question is None
+            or question_id in records
+            or record.get("question_type") != question["question_type"]
+            or record.get("expected_doc_ids") != question["expected_doc_ids"]
+            or record.get("request_status") not in {"success", "failure"}
+        ):
+            raise ValueError("Benchmark checkpoint question records do not match the corpus")
+        records[question_id] = record
+    return metadata, records
+
+
+def _ordered_records(
+    benchmark: ValidatedBenchmark,
+    records: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        records[question["question_id"]]
+        for question in benchmark.questions
+        if question["question_id"] in records
+    ]
+
+
+def retrieval_metrics(
+    records: Sequence[dict[str, Any]],
+    questions: Sequence[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    denominator_questions = list(questions) if questions is not None else list(records)
+    answerable_questions = [
+        question for question in denominator_questions if question["expected_doc_ids"]
+    ]
+    answerable = [
+        record
+        for record in records
+        if record["expected_doc_ids"] and record.get("request_status", "success") == "success"
+    ]
+    if not answerable_questions:
         raise ValueError("Retrieval metrics require at least one answerable question")
     hit_3_count = sum(record["hit_at_3"] for record in answerable)
     hit_5_count = sum(record["hit_at_5"] for record in answerable)
     recall_sum = sum(record["document_recall_at_5"] for record in answerable)
-    denominator = len(answerable)
+    denominator = len(answerable_questions)
     return {
+        "requests": _request_summary(records, len(denominator_questions)),
         "answerable_question_count": denominator,
-        "excluded_info_not_found_count": len(records) - denominator,
+        "successful_answerable_question_count": len(answerable),
+        "failed_or_pending_answerable_question_count": denominator - len(answerable),
+        "excluded_info_not_found_count": len(denominator_questions) - denominator,
         "retrieval_hit_at_3": {
             "count": hit_3_count,
             "denominator": denominator,
@@ -356,30 +549,56 @@ def retrieval_metrics(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
 def run_retrieval_baseline(
     client: WorkbenchClient,
     benchmark: ValidatedBenchmark,
+    state_path: Path,
     output_path: Path,
+    *,
+    retry_failed: bool = False,
 ) -> dict[str, Any]:
-    records: list[dict[str, Any]] = []
+    preflight_benchmark_knowledge_base(
+        client,
+        benchmark,
+        state_path,
+        allow_fresh=False,
+        require_complete=True,
+    )
+    metadata, records = _load_checkpoint(output_path, benchmark, "retrieval")
+
+    def persist() -> dict[str, Any]:
+        ordered = _ordered_records(benchmark, records)
+        payload = {
+            "metadata": {**metadata, "updated_at": utc_now()},
+            "metrics": retrieval_metrics(ordered, benchmark.questions),
+            "questions": ordered,
+        }
+        save_json(output_path, payload)
+        return payload
+
     for question in benchmark.questions:
-        response = client.search(question["question"])
-        results = response["results"]
-        ranked_doc_ids = retrieved_doc_ids(
-            results,
-            benchmark.file_name_to_doc_id,
-        )
-        expected = question["expected_doc_ids"]
-        expected_set = set(expected)
-        hit_3 = bool(expected_set.intersection(ranked_doc_ids[:3])) if expected else False
-        hit_5 = bool(expected_set.intersection(ranked_doc_ids[:5])) if expected else False
-        recall_5 = (
-            len(expected_set.intersection(ranked_doc_ids[:5])) / len(expected_set)
-            if expected
-            else None
-        )
-        records.append(
-            {
+        existing = records.get(question["question_id"])
+        if existing is not None and (
+            existing["request_status"] == "success" or not retry_failed
+        ):
+            continue
+        try:
+            response = client.search(question["question"])
+            results = response["results"]
+            if not isinstance(results, list):
+                raise TypeError("Search response results are invalid")
+            ranked_doc_ids = retrieved_doc_ids(results, benchmark.file_name_to_doc_id)
+            expected = question["expected_doc_ids"]
+            expected_set = set(expected)
+            hit_3 = bool(expected_set.intersection(ranked_doc_ids[:3])) if expected else False
+            hit_5 = bool(expected_set.intersection(ranked_doc_ids[:5])) if expected else False
+            recall_5 = (
+                len(expected_set.intersection(ranked_doc_ids[:5])) / len(expected_set)
+                if expected
+                else None
+            )
+            records[question["question_id"]] = {
                 "question_id": question["question_id"],
                 "question_type": question["question_type"],
                 "expected_doc_ids": expected,
+                "request_status": "success",
                 "retrieved_doc_ids_at_5": ranked_doc_ids[:5],
                 "hit_at_3": hit_3,
                 "hit_at_5": hit_5,
@@ -396,23 +615,46 @@ def run_retrieval_baseline(
                     for item in results
                 ],
             }
-        )
-    payload = {
-        "metadata": run_metadata(benchmark),
-        "metrics": retrieval_metrics(records),
-        "questions": records,
-    }
-    save_json(output_path, payload)
-    return payload
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+            records[question["question_id"]] = _failure_record(question, exc)
+        persist()
+    return persist()
 
 
 def _ratio(numerator: int, denominator: int) -> float | None:
     return numerator / denominator if denominator else None
 
 
-def answer_metrics(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
-    answerable = [record for record in records if record["expected_doc_ids"]]
-    not_found = [record for record in records if not record["expected_doc_ids"]]
+def _fixed_generation_settings(generation: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: generation[key]
+        for key in (
+            "model",
+            "reasoning_effort",
+            "retrieval_limit",
+            "prompt_version",
+            "max_input_tokens",
+            "max_output_tokens",
+        )
+    }
+
+
+def answer_metrics(
+    records: Sequence[dict[str, Any]],
+    questions: Sequence[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    denominator_questions = list(questions) if questions is not None else list(records)
+    answerable_questions = [
+        question for question in denominator_questions if question["expected_doc_ids"]
+    ]
+    not_found_questions = [
+        question for question in denominator_questions if not question["expected_doc_ids"]
+    ]
+    successful = [
+        record for record in records if record.get("request_status", "success") == "success"
+    ]
+    answerable = [record for record in successful if record["expected_doc_ids"]]
+    not_found = [record for record in successful if not record["expected_doc_ids"]]
     citations = [
         citation
         for record in answerable
@@ -426,8 +668,13 @@ def answer_metrics(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
     correct_no_answer = sum(record["status"] == "unsupported" for record in not_found)
     answerable_unsupported = sum(record["status"] == "unsupported" for record in answerable)
     return {
-        "answerable_question_count": len(answerable),
-        "info_not_found_question_count": len(not_found),
+        "requests": _request_summary(records, len(denominator_questions)),
+        "answerable_question_count": len(answerable_questions),
+        "successful_answerable_question_count": len(answerable),
+        "failed_or_pending_answerable_question_count": len(answerable_questions)
+        - len(answerable),
+        "info_not_found_question_count": len(not_found_questions),
+        "successful_info_not_found_question_count": len(not_found),
         "citation_expected_document_precision": {
             "count": expected_citations,
             "denominator": len(citations),
@@ -435,18 +682,18 @@ def answer_metrics(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
         },
         "expected_document_citation_coverage": {
             "count": expected_coverage,
-            "denominator": len(answerable),
-            "rate": _ratio(expected_coverage, len(answerable)),
+            "denominator": len(answerable_questions),
+            "rate": _ratio(expected_coverage, len(answerable_questions)),
         },
         "info_not_found_unsupported_accuracy": {
             "count": correct_no_answer,
-            "denominator": len(not_found),
-            "rate": _ratio(correct_no_answer, len(not_found)),
+            "denominator": len(not_found_questions),
+            "rate": _ratio(correct_no_answer, len(not_found_questions)),
         },
         "answerable_unsupported_rate": {
             "count": answerable_unsupported,
-            "denominator": len(answerable),
-            "rate": _ratio(answerable_unsupported, len(answerable)),
+            "denominator": len(answerable_questions),
+            "rate": _ratio(answerable_unsupported, len(answerable_questions)),
         },
     }
 
@@ -454,75 +701,71 @@ def answer_metrics(records: Sequence[dict[str, Any]]) -> dict[str, Any]:
 def run_answer_inspection(
     client: WorkbenchClient,
     benchmark: ValidatedBenchmark,
+    state_path: Path,
     output_path: Path,
     review_path: Path,
+    *,
+    retry_failed: bool = False,
 ) -> dict[str, Any]:
-    records: list[dict[str, Any]] = []
-    review_records: list[dict[str, Any]] = []
-    generation_settings: dict[str, Any] | None = None
-    usage_totals = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
-    usage_available_count = 0
+    preflight_benchmark_knowledge_base(
+        client,
+        benchmark,
+        state_path,
+        allow_fresh=False,
+        require_complete=True,
+    )
+    metadata, records = _load_checkpoint(output_path, benchmark, "answers")
 
-    for question in benchmark.questions:
-        response = client.answer(question["question"])
-        generation = response["generation"]
-        fixed_settings = {
-            key: generation[key]
-            for key in (
-                "model",
-                "reasoning_effort",
-                "retrieval_limit",
-                "prompt_version",
-                "max_input_tokens",
-                "max_output_tokens",
-            )
+    def persist() -> dict[str, Any]:
+        ordered = _ordered_records(benchmark, records)
+        generation_settings: dict[str, Any] | None = None
+        usage_totals = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        usage_available_count = 0
+        for record in ordered:
+            if record["request_status"] != "success":
+                continue
+            generation = record["generation"]
+            fixed_settings = _fixed_generation_settings(generation)
+            if generation_settings is None:
+                generation_settings = fixed_settings
+            elif generation_settings != fixed_settings:
+                raise ValueError("Generation settings changed during benchmark run")
+            if generation["total_tokens"] is not None:
+                usage_available_count += 1
+                for key in usage_totals:
+                    usage_totals[key] += generation[key]
+
+        payload = {
+            "metadata": {
+                **metadata,
+                "updated_at": utc_now(),
+                "generation": generation_settings,
+                "token_usage": {
+                    "responses_with_usage": usage_available_count,
+                    **usage_totals,
+                },
+            },
+            "metrics": answer_metrics(ordered, benchmark.questions),
+            "questions": ordered,
         }
-        if generation_settings is None:
-            generation_settings = fixed_settings
-        elif generation_settings != fixed_settings:
-            raise ValueError("Generation settings changed during benchmark run")
-        if generation["total_tokens"] is not None:
-            usage_available_count += 1
-            for key in usage_totals:
-                usage_totals[key] += generation[key]
+        save_json(output_path, payload)
 
-        expected = set(question["expected_doc_ids"])
-        citations = []
-        for citation in response["citations"]:
-            doc_id = benchmark.file_name_to_doc_id.get(citation["file_name"])
-            if doc_id is None:
-                raise ValueError(
-                    f"Answer returned unknown benchmark file: {citation['file_name']}"
-                )
-            citations.append(
-                {
-                    **citation,
-                    "doc_id": doc_id,
-                    "expected_document": doc_id in expected,
-                }
-            )
-        records.append(
-            {
-                "question_id": question["question_id"],
-                "question_type": question["question_type"],
-                "expected_doc_ids": question["expected_doc_ids"],
-                "status": response["status"],
-                "answer": response["answer"],
-                "message": response["message"],
-                "citations": citations,
-                "generation": generation,
-            }
-        )
-        review_records.append(
-            {
+        records_by_id = {record["question_id"]: record for record in ordered}
+        review_records = []
+        for question in benchmark.questions:
+            record = records_by_id.get(question["question_id"])
+            if record is None:
+                continue
+            review_record = {
                 "question_id": question["question_id"],
                 "question_type": question["question_type"],
                 "question": question["question"],
                 "expected_doc_ids": question["expected_doc_ids"],
                 "gold_answer": question.get("gold_answer"),
-                "system_status": response["status"],
-                "system_answer": response["answer"],
-                "citations": citations,
+                "request_status": record["request_status"],
+                "system_status": record.get("status"),
+                "system_answer": record.get("answer"),
+                "citations": record.get("citations", []),
                 "answer_facts": [
                     {"fact": fact, "covered": None, "notes": None}
                     for fact in question.get("answer_facts", [])
@@ -530,33 +773,84 @@ def run_answer_inspection(
                 "overall_correct": None,
                 "review_notes": None,
             }
-        )
-
-    payload = {
-        "metadata": {
-            **run_metadata(benchmark),
-            "generation": generation_settings,
-            "token_usage": {
-                "responses_with_usage": usage_available_count,
-                **usage_totals,
+            if record["request_status"] == "failure":
+                review_record["failure"] = record["failure"]
+            review_records.append(review_record)
+        save_json(
+            review_path,
+            {
+                "metadata": payload["metadata"],
+                "instructions": (
+                    "Review each successful answer fact against the system answer and citations; "
+                    "set covered to true or false, then set overall_correct and notes."
+                ),
+                "questions": review_records,
             },
-        },
-        "metrics": answer_metrics(records),
-        "questions": records,
-    }
-    save_json(output_path, payload)
-    save_json(
-        review_path,
-        {
-            "metadata": payload["metadata"],
-            "instructions": (
-                "Review each answer fact against the system answer and citations; set covered "
-                "to true or false, then set overall_correct and notes."
-            ),
-            "questions": review_records,
-        },
-    )
-    return payload
+        )
+        return payload
+
+    for question in benchmark.questions:
+        existing = records.get(question["question_id"])
+        if existing is not None and (
+            existing["request_status"] == "success" or not retry_failed
+        ):
+            continue
+        try:
+            response = client.answer(question["question"])
+            generation = response["generation"]
+            if not isinstance(generation, dict):
+                raise TypeError("Answer generation metadata is invalid")
+            fixed_settings = _fixed_generation_settings(generation)
+            prior_settings = {
+                tuple(_fixed_generation_settings(record["generation"]).items())
+                for record in records.values()
+                if record["request_status"] == "success"
+            }
+            if prior_settings and tuple(fixed_settings.items()) not in prior_settings:
+                raise ValueError("Generation settings changed during benchmark run")
+            usage = {
+                usage_key: generation[usage_key]
+                for usage_key in ("input_tokens", "output_tokens", "total_tokens")
+            }
+            if any(
+                value is not None
+                and (isinstance(value, bool) or not isinstance(value, int))
+                for value in usage.values()
+            ) or (
+                usage["total_tokens"] is not None
+                and (usage["input_tokens"] is None or usage["output_tokens"] is None)
+            ):
+                raise TypeError("Answer token usage metadata is invalid")
+            expected = set(question["expected_doc_ids"])
+            citations = []
+            for citation in response["citations"]:
+                doc_id = benchmark.file_name_to_doc_id.get(citation["file_name"])
+                if doc_id is None:
+                    raise ValueError(
+                        f"Answer returned unknown benchmark file: {citation['file_name']}"
+                    )
+                citations.append(
+                    {
+                        **citation,
+                        "doc_id": doc_id,
+                        "expected_document": doc_id in expected,
+                    }
+                )
+            records[question["question_id"]] = {
+                "question_id": question["question_id"],
+                "question_type": question["question_type"],
+                "expected_doc_ids": question["expected_doc_ids"],
+                "request_status": "success",
+                "status": response["status"],
+                "answer": response["answer"],
+                "message": response["message"],
+                "citations": citations,
+                "generation": generation,
+            }
+        except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+            records[question["question_id"]] = _failure_record(question, exc)
+        persist()
+    return persist()
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -571,6 +865,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--email", default=os.getenv("WORKBENCH_EMAIL"))
     parser.add_argument("--password", default=os.getenv("WORKBENCH_PASSWORD"))
     parser.add_argument("--timeout-seconds", type=float, default=60.0)
+    parser.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Retry only failed checkpoint records; successful records are always preserved",
+    )
     return parser.parse_args(argv)
 
 
@@ -611,21 +910,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         timeout_seconds=args.timeout_seconds,
     )
     try:
+        state_path = args.output_dir / "ingest_state.json"
         for stage in stages(args.stage):
             if stage == "ingest":
-                ingest_corpus(client, benchmark, args.output_dir / "ingest_state.json")
+                ingest_corpus(client, benchmark, state_path)
             elif stage == "retrieval":
                 run_retrieval_baseline(
                     client,
                     benchmark,
+                    state_path,
                     args.output_dir / "retrieval_baseline.json",
+                    retry_failed=args.retry_failed,
                 )
             elif stage == "answers":
                 run_answer_inspection(
                     client,
                     benchmark,
+                    state_path,
                     args.output_dir / "answer_baseline.json",
                     args.output_dir / "answer_fact_review.json",
+                    retry_failed=args.retry_failed,
                 )
     finally:
         client.close()

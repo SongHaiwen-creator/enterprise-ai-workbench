@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from benchmarks.enterprise_rag.runner import (
     answer_metrics,
@@ -68,10 +69,24 @@ class FakeClient:
         self.knowledge_base_id = "knowledge-base-1"
         self.upload_calls: list[str] = []
         self.index_calls: list[str] = []
+        self.search_calls: list[str] = []
+        self.answer_calls: list[str] = []
+        self.product_documents: list[dict[str, Any]] = []
+        self.search_failures: dict[str, Exception] = {}
+        self.answer_failures: dict[str, Exception] = {}
+
+    def list_documents(self) -> list[dict[str, Any]]:
+        return self.product_documents
 
     def upload(self, path: Path) -> dict[str, Any]:
         self.upload_calls.append(path.name)
-        return {"id": f"product-{path.stem}"}
+        document = {
+            "id": f"product-{path.stem}",
+            "file_name": path.name,
+            "status": "ready",
+        }
+        self.product_documents.append(document)
+        return document
 
     def index(self, document_id: str) -> dict[str, Any]:
         self.index_calls.append(document_id)
@@ -81,6 +96,9 @@ class FakeClient:
         }
 
     def search(self, question: str) -> dict[str, Any]:
+        self.search_calls.append(question)
+        if question in self.search_failures:
+            raise self.search_failures[question]
         if "travel" in question.lower():
             results = [
                 {
@@ -103,6 +121,9 @@ class FakeClient:
         return {"query": question, "results": results}
 
     def answer(self, question: str) -> dict[str, Any]:
+        self.answer_calls.append(question)
+        if question in self.answer_failures:
+            raise self.answer_failures[question]
         generation = {
             "model": "gpt-5.6-terra",
             "reasoning_effort": "low",
@@ -183,12 +204,43 @@ def test_ingestion_is_resumable_and_does_not_copy_corpus(tmp_path: Path) -> None
     }
 
 
+def test_ingestion_requires_a_dedicated_empty_knowledge_base(tmp_path: Path) -> None:
+    benchmark_fixture(tmp_path)
+    benchmark = validate_benchmark(tmp_path)
+    client = FakeClient()
+    client.product_documents.append(
+        {"id": "unrelated", "file_name": "other.txt", "status": "ready"}
+    )
+
+    with pytest.raises(ValueError, match="dedicated empty Knowledge Base"):
+        ingest_corpus(client, benchmark, tmp_path / "state.json")
+
+    assert client.upload_calls == []
+
+
+def test_resumed_run_rejects_documents_not_in_ingest_state(tmp_path: Path) -> None:
+    benchmark_fixture(tmp_path)
+    benchmark = validate_benchmark(tmp_path)
+    client = FakeClient()
+    state = tmp_path / "state.json"
+    ingest_corpus(client, benchmark, state)
+    client.product_documents.append(
+        {"id": "unrelated", "file_name": "other.txt", "status": "ready"}
+    )
+
+    with pytest.raises(ValueError, match="do not match ingest state"):
+        run_retrieval_baseline(client, benchmark, state, tmp_path / "retrieval.json")
+
+
 def test_retrieval_baseline_preserves_ids_and_calculates_metrics(tmp_path: Path) -> None:
     benchmark_fixture(tmp_path)
     benchmark = validate_benchmark(tmp_path)
     output = tmp_path / "retrieval.json"
+    state = tmp_path / "state.json"
+    client = FakeClient()
+    ingest_corpus(client, benchmark, state)
 
-    payload = run_retrieval_baseline(FakeClient(), benchmark, output)
+    payload = run_retrieval_baseline(client, benchmark, state, output)
 
     assert output.exists()
     assert payload["metadata"]["chunk_size"] == 1000
@@ -211,8 +263,11 @@ def test_answer_inspection_records_settings_usage_and_review_template(tmp_path: 
     benchmark = validate_benchmark(tmp_path)
     output = tmp_path / "answers.json"
     review = tmp_path / "review.json"
+    state = tmp_path / "state.json"
+    client = FakeClient()
+    ingest_corpus(client, benchmark, state)
 
-    payload = run_answer_inspection(FakeClient(), benchmark, output, review)
+    payload = run_answer_inspection(client, benchmark, state, output, review)
 
     assert payload["metadata"]["generation"] == {
         "model": "gpt-5.6-terra",
@@ -235,6 +290,101 @@ def test_answer_inspection_records_settings_usage_and_review_template(tmp_path: 
         {"fact": "The limit is $100.", "covered": None, "notes": None}
     ]
     assert review_payload["questions"][0]["overall_correct"] is None
+
+
+def http_failure(status_code: int, secret: str) -> httpx.HTTPStatusError:
+    request = httpx.Request("POST", "https://workbench.invalid/benchmark")
+    response = httpx.Response(status_code, request=request, text=secret)
+    return httpx.HTTPStatusError(secret, request=request, response=response)
+
+
+def test_retrieval_checkpoint_records_failure_and_retries_only_failures(
+    tmp_path: Path,
+) -> None:
+    benchmark_fixture(tmp_path)
+    benchmark = validate_benchmark(tmp_path)
+    client = FakeClient()
+    state = tmp_path / "state.json"
+    output = tmp_path / "retrieval.json"
+    ingest_corpus(client, benchmark, state)
+    failed_question = benchmark.questions[1]["question"]
+    client.search_failures[failed_question] = http_failure(503, "provider secret payload")
+
+    first = run_retrieval_baseline(client, benchmark, state, output)
+
+    assert first["metrics"]["requests"] == {
+        "total": 2,
+        "completed": 2,
+        "successful": 1,
+        "failed": 1,
+        "pending": 0,
+    }
+    assert first["questions"][1] == {
+        "question_id": "q2",
+        "question_type": "info_not_found",
+        "expected_doc_ids": [],
+        "request_status": "failure",
+        "failure": {"type": "http_error", "http_status": 503},
+    }
+    assert "provider secret payload" not in output.read_text(encoding="utf-8")
+
+    run_retrieval_baseline(client, benchmark, state, output)
+    assert len(client.search_calls) == 2
+
+    del client.search_failures[failed_question]
+    resumed = run_retrieval_baseline(
+        client, benchmark, state, output, retry_failed=True
+    )
+    assert client.search_calls == [
+        benchmark.questions[0]["question"],
+        failed_question,
+        failed_question,
+    ]
+    assert resumed["metrics"]["requests"]["successful"] == 2
+    assert resumed["metrics"]["requests"]["failed"] == 0
+
+
+def test_answer_checkpoint_preserves_paid_progress_and_sanitizes_failure(
+    tmp_path: Path,
+) -> None:
+    benchmark_fixture(tmp_path)
+    benchmark = validate_benchmark(tmp_path)
+    client = FakeClient()
+    state = tmp_path / "state.json"
+    output = tmp_path / "answers.json"
+    review = tmp_path / "review.json"
+    ingest_corpus(client, benchmark, state)
+    failed_question = benchmark.questions[1]["question"]
+    client.answer_failures[failed_question] = http_failure(502, "raw enterprise text")
+
+    first = run_answer_inspection(client, benchmark, state, output, review)
+
+    assert first["metadata"]["token_usage"]["responses_with_usage"] == 1
+    assert first["metrics"]["requests"]["successful"] == 1
+    assert first["metrics"]["requests"]["failed"] == 1
+    assert first["metrics"]["info_not_found_unsupported_accuracy"] == {
+        "count": 0,
+        "denominator": 1,
+        "rate": 0.0,
+    }
+    assert "raw enterprise text" not in output.read_text(encoding="utf-8")
+    assert "raw enterprise text" not in review.read_text(encoding="utf-8")
+
+    run_answer_inspection(client, benchmark, state, output, review)
+    assert len(client.answer_calls) == 2
+
+    del client.answer_failures[failed_question]
+    resumed = run_answer_inspection(
+        client,
+        benchmark,
+        state,
+        output,
+        review,
+        retry_failed=True,
+    )
+    assert len(client.answer_calls) == 3
+    assert resumed["metrics"]["requests"]["successful"] == 2
+    assert resumed["metadata"]["token_usage"]["responses_with_usage"] == 2
 
 
 def test_metric_helpers_use_answerable_denominators() -> None:

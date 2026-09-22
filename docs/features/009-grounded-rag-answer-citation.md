@@ -448,13 +448,16 @@ product APIs and caller-supplied configuration. It will support separate,
 resumable stages:
 
 1. Validate the local benchmark manifest and file set.
-2. Upload the 200 selected TXT files through the existing Document API.
-3. Index successfully uploaded ready Documents through the existing indexing
+2. Require a dedicated benchmark Knowledge Base. A fresh ingest requires zero
+   existing Documents; a resumed run requires its Documents to match the saved
+   ingest state exactly.
+3. Upload the 200 selected TXT files through the existing Document API.
+4. Index successfully uploaded ready Documents through the existing indexing
    API.
-4. Run all 24 questions through semantic search with limits 3 and 5, without
+5. Run all 24 questions through semantic search with limits 3 and 5, without
    changing chunking or retrieval behavior.
-5. Save a machine-readable retrieval baseline.
-6. After generation is available, run the questions through the answer API and
+6. Save a machine-readable retrieval baseline.
+7. After generation is available, run the questions through the answer API and
    save machine-readable answer/citation records for inspection.
 
 Credentials, tokens, host URLs, Workspace IDs, and Knowledge Base IDs come
@@ -466,6 +469,17 @@ corpus content and secrets may not.
 The runner maps upstream `doc_id` values to product Document IDs using the
 validated manifest file name. It preserves `question_id`, `question_type`, and
 `expected_doc_ids` in every per-question output record.
+
+Retrieval and answer results are checkpointed after each completed question.
+Request-level failures are retained as sanitized records containing a failure
+type and HTTP status when available, without exception messages, response
+bodies, credentials, or raw enterprise text. A normal rerun skips all recorded
+questions; an explicit retry option retries failed records only. Summaries
+report total, successful, failed, and pending request counts. Failed or pending
+requests remain in applicable quality-metric denominators so failures cannot
+inflate the baseline. Search results are never post-filtered to hide Documents
+outside the benchmark corpus; the dedicated-Knowledge-Base preflight enforces
+the corpus invariant before measurement instead.
 
 ### 8.4 Retrieval metrics
 
@@ -545,7 +559,9 @@ pass without OpenAI credentials, internet access, or paid API calls.
 The local runner can ingest/index the prepared external 200-Document subset,
 run all 24 questions, preserve question and expected Document IDs, calculate
 Hit@3, Hit@5, and Document Recall@5, and save machine-readable results without
-requiring raw corpus files in Git.
+requiring raw corpus files in Git. It enforces a dedicated clean Knowledge Base,
+verifies resumed targets against ingest state, checkpoints each question, and
+supports explicit retry of sanitized failure records.
 
 ### AC-008 - Answer inspection
 
@@ -582,8 +598,10 @@ Automated tests must cover:
   and malformed structured output,
 - absence of secrets, question text, chunk text, and provider bodies from
   errors and logs,
-- benchmark manifest validation, upstream-ID mapping, metric denominators and
-  formulas, resumption behavior, and output schema,
+- benchmark manifest validation, dedicated-Knowledge-Base preflight, resumed
+  target consistency, upstream-ID mapping, metric denominators and formulas,
+  per-question checkpointing, sanitized failures, explicit failure retry, and
+  output schema,
 - regressions for the existing Feature 008 endpoints.
 
 Verification must include:
