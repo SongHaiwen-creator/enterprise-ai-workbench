@@ -213,6 +213,7 @@ tempCodeRunnerFile.py
 frontend/node_modules/
 frontend/.next/
 backend/.venv/
+benchmarks/enterprise_rag/output/
 .env
 .env.*
 !.env.example

@@ -33,6 +33,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = [".."]
 markers = [
     "integration: requires a dedicated PostgreSQL test database",
 ]

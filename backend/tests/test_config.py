@@ -43,6 +43,12 @@ def test_embedding_contract_has_fixed_mvp_defaults() -> None:
     assert settings.openai_api_key is None
     assert settings.embedding_model == "text-embedding-3-small"
     assert settings.embedding_dimensions == 1536
+    assert settings.generation_model == "gpt-5.6-terra"
+    assert settings.generation_reasoning_effort == "low"
+    assert settings.generation_prompt_version == "grounded-answer-v1"
+    assert settings.generation_retrieval_limit == 5
+    assert settings.generation_max_input_tokens == 12000
+    assert settings.generation_max_output_tokens == 1200
     assert settings.openai_timeout_seconds == 30
 
 
@@ -51,6 +57,12 @@ def test_embedding_contract_has_fixed_mvp_defaults() -> None:
     [
         ("embedding_model", "incompatible-model"),
         ("embedding_dimensions", 3072),
+        ("generation_model", "incompatible-model"),
+        ("generation_reasoning_effort", "medium"),
+        ("generation_prompt_version", "unversioned"),
+        ("generation_retrieval_limit", 10),
+        ("generation_max_input_tokens", 24000),
+        ("generation_max_output_tokens", 2400),
         ("openai_timeout_seconds", 0),
     ],
 )
