@@ -1,8 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 
 import { KnowledgeQA } from "@/app/components/knowledge-qa";
+import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
 
 import {
   ApiError,
@@ -46,7 +47,8 @@ export default function Home() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
-  const [knowledgeBasesError, setKnowledgeBasesError] = useState<string | null>(null);
+  const [knowledgeBasesError, setKnowledgeBasesError] =
+    useState<KnowledgeBasesLoadFailure>(null);
   const [productArea, setProductArea] = useState<ProductArea>("knowledge-qa");
   const [qaPending, setQaPending] = useState(false);
   const [loginPending, setLoginPending] = useState(false);
@@ -56,12 +58,14 @@ export default function Home() {
   const [notice, setNotice] = useState<Notice>(null);
   const [newMemberId, setNewMemberId] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<MembershipRole>("employee");
+  const workspaceRequestGeneration = useRef(0);
 
   const selectedWorkspace =
     workspaces.find((item) => item.id === selectedWorkspaceId) ?? null;
   const isAdministrator = selectedWorkspace?.role === "system_admin";
 
   function clearSession(message?: string) {
+    workspaceRequestGeneration.current += 1;
     setAccessToken(null);
     setCurrentUser(null);
     setWorkspaces([]);
@@ -89,6 +93,7 @@ export default function Home() {
   }
 
   async function selectWorkspace(item: WorkspaceListItem, token: string) {
+    const requestGeneration = ++workspaceRequestGeneration.current;
     setSelectedWorkspaceId(item.id);
     setWorkspace(null);
     setMembers([]);
@@ -98,29 +103,51 @@ export default function Home() {
     setWorkspacePending(true);
 
     try {
-      const [workspaceResult, memberResult] = await Promise.all([
+      const [workspaceResult, memberResult, knowledgeBaseResult] = await Promise.all([
         getWorkspace(item.id, token),
         item.role === "system_admin"
           ? listWorkspaceMembers(item.id, token)
           : Promise.resolve([]),
+        listKnowledgeBases(item.id, token).then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => ({ ok: false as const, error }),
+        ),
       ]);
-      setWorkspace(workspaceResult);
-      setMembers(memberResult);
 
-      try {
-        setKnowledgeBases(await listKnowledgeBases(item.id, token));
-      } catch (error) {
+      if (requestGeneration !== workspaceRequestGeneration.current) return;
+
+      if (!knowledgeBaseResult.ok) {
+        const error = knowledgeBaseResult.error;
         if (error instanceof ApiError && error.status === 401) {
           clearSession("Your session expired. Sign in again to continue.");
           return;
         }
+
+        setWorkspace(workspaceResult);
+        setMembers(memberResult);
         setKnowledgeBasesError(
-          error instanceof ApiError
-            ? error.message
-            : "We could not load knowledge bases for this workspace.",
+          error instanceof ApiError && error.status === 403
+            ? {
+                kind: "forbidden",
+                message: "You do not have access to knowledge bases in this workspace.",
+              }
+            : {
+                kind: "error",
+                message:
+                  error instanceof ApiError
+                    ? error.message
+                    : "We could not load knowledge bases for this workspace.",
+              },
         );
+        return;
       }
+
+      setWorkspace(workspaceResult);
+      setMembers(memberResult);
+      setKnowledgeBases(knowledgeBaseResult.value);
     } catch (error) {
+      if (requestGeneration !== workspaceRequestGeneration.current) return;
+
       if (error instanceof ApiError && error.status === 401) {
         clearSession("Your session expired. Sign in again to continue.");
       } else {
@@ -129,7 +156,9 @@ export default function Home() {
         setNotice({ tone: "error", message });
       }
     } finally {
-      setWorkspacePending(false);
+      if (requestGeneration === workspaceRequestGeneration.current) {
+        setWorkspacePending(false);
+      }
     }
   }
 

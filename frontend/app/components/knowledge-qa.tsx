@@ -23,11 +23,16 @@ interface KnowledgeQAProps {
   workspaceName: string;
   knowledgeBases: KnowledgeBase[];
   knowledgeBasesPending: boolean;
-  knowledgeBasesError: string | null;
+  knowledgeBasesError: KnowledgeBasesLoadFailure;
   accessToken: string;
   onUnauthorized: () => void;
   onPendingChange: (pending: boolean) => void;
 }
+
+export type KnowledgeBasesLoadFailure =
+  | { kind: "forbidden"; message: string }
+  | { kind: "error"; message: string }
+  | null;
 
 function chunkLabel(chunkIndex: number): string {
   return `Chunk ${chunkIndex + 1}`;
@@ -152,13 +157,26 @@ export function KnowledgeQA({
   }
 
   if (knowledgeBasesError) {
+    if (knowledgeBasesError.kind === "forbidden") {
+      return (
+        <section className="qa-state-card error-state" role="alert">
+          <span className="state-icon" aria-hidden="true">×</span>
+          <div>
+            <p className="section-kicker">Access denied</p>
+            <h2>You cannot access Knowledge Q&A in this workspace</h2>
+            <p>{knowledgeBasesError.message}</p>
+          </div>
+        </section>
+      );
+    }
+
     return (
       <section className="qa-state-card error-state" role="alert">
         <span className="state-icon" aria-hidden="true">!</span>
         <div>
           <p className="section-kicker">Knowledge Q&A unavailable</p>
           <h2>We could not load your knowledge bases</h2>
-          <p>{knowledgeBasesError}</p>
+          <p>{knowledgeBasesError.message}</p>
         </div>
       </section>
     );

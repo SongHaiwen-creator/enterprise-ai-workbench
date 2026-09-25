@@ -158,7 +158,9 @@ describe("Knowledge Q&A", () => {
   });
 
   it("renders a recoverable API or network error", () => {
-    renderKnowledgeQA({ knowledgeBasesError: "Service temporarily unavailable." });
+    renderKnowledgeQA({
+      knowledgeBasesError: { kind: "error", message: "Service temporarily unavailable." },
+    });
 
     expect(screen.getByText("We could not load your knowledge bases")).toBeInTheDocument();
     expect(screen.getByText("Service temporarily unavailable.")).toBeInTheDocument();
