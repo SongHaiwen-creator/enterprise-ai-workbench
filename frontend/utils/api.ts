@@ -47,6 +47,47 @@ export interface WorkspaceMember {
   joined_at: string | null;
 }
 
+export interface KnowledgeBase {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  status: "active" | "disabled";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroundedCitation {
+  document_id: string;
+  file_name: string;
+  document_version: number;
+  chunk_id: string;
+  chunk_index: number;
+  excerpt: string;
+}
+
+export interface GenerationMetadata {
+  model: string;
+  reasoning_effort: "low";
+  retrieval_limit: 5;
+  prompt_version: string;
+  max_input_tokens: number;
+  max_output_tokens: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+}
+
+export interface GroundedAnswerResponse {
+  question: string;
+  status: "answered" | "unsupported";
+  answer: string | null;
+  message: string | null;
+  citations: GroundedCitation[];
+  generation: GenerationMetadata;
+}
+
 export interface MembershipUpdate {
   role?: MembershipRole;
   status?: MembershipStatus;
@@ -165,4 +206,31 @@ export function updateWorkspaceMember(
     method: "PATCH",
     body: JSON.stringify(payload),
   }, accessToken);
+}
+
+export function listKnowledgeBases(
+  workspaceId: string,
+  accessToken: string,
+): Promise<KnowledgeBase[]> {
+  return requestJson<KnowledgeBase[]>(
+    `/api/workspaces/${workspaceId}/knowledge-bases`,
+    {},
+    accessToken,
+  );
+}
+
+export function answerKnowledgeQuestion(
+  workspaceId: string,
+  knowledgeBaseId: string,
+  question: string,
+  accessToken: string,
+): Promise<GroundedAnswerResponse> {
+  return requestJson<GroundedAnswerResponse>(
+    `/api/workspaces/${workspaceId}/knowledge-bases/${knowledgeBaseId}/answer`,
+    {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    },
+    accessToken,
+  );
 }
