@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, normalizeBaseUrl, requestJson } from "../utils/api.ts";
+import {
+  ApiError,
+  answerKnowledgeQuestion,
+  listKnowledgeBases,
+  normalizeBaseUrl,
+  requestJson,
+} from "../utils/api.ts";
 import { formatEnumLabel, initials } from "../utils/presentation.ts";
 
 test("normalizes the configured API base URL", () => {
@@ -70,6 +76,36 @@ test("normalizes non-JSON and network failures", async (context) => {
     requestJson("/api/workspaces"),
     (error: unknown) => error instanceof ApiError && error.status === 0,
   );
+});
+
+test("uses workspace-scoped Knowledge Base and answer endpoints", async (context) => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  context.after(() => { globalThis.fetch = originalFetch; });
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({ url: String(input), init });
+    return new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  await listKnowledgeBases("workspace-1", "test-token");
+  await answerKnowledgeQuestion("workspace-1", "kb-1", "  What is policy?  ", "test-token");
+
+  assert.equal(
+    requests[0].url,
+    "http://localhost:8000/api/workspaces/workspace-1/knowledge-bases",
+  );
+  assert.equal(
+    requests[1].url,
+    "http://localhost:8000/api/workspaces/workspace-1/knowledge-bases/kb-1/answer",
+  );
+  assert.equal(requests[1].init?.method, "POST");
+  assert.deepEqual(JSON.parse(String(requests[1].init?.body)), {
+    question: "  What is policy?  ",
+  });
 });
 
 test("formats API enum labels and initials for display", () => {

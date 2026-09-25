@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Workspace | Enterprise AI Workbench",
-  description: "Manage enterprise workspaces and members",
+  title: "Knowledge Q&A | Enterprise AI Workbench",
+  description: "Ask grounded questions across authorized enterprise knowledge",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

@@ -2,9 +2,12 @@
 
 import { FormEvent, useState } from "react";
 
+import { KnowledgeQA } from "@/app/components/knowledge-qa";
+
 import {
   ApiError,
   CurrentUser,
+  KnowledgeBase,
   MembershipRole,
   MembershipStatus,
   Workspace,
@@ -13,6 +16,7 @@ import {
   createWorkspaceMember,
   getCurrentUser,
   getWorkspace,
+  listKnowledgeBases,
   listWorkspaceMembers,
   listWorkspaces,
   login,
@@ -30,6 +34,7 @@ const ROLES: MembershipRole[] = [
 const STATUSES: MembershipStatus[] = ["invited", "active", "disabled"];
 
 type Notice = { tone: "success" | "error"; message: string } | null;
+type ProductArea = "knowledge-qa" | "workspace";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -40,6 +45,10 @@ export default function Home() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [knowledgeBasesError, setKnowledgeBasesError] = useState<string | null>(null);
+  const [productArea, setProductArea] = useState<ProductArea>("knowledge-qa");
+  const [qaPending, setQaPending] = useState(false);
   const [loginPending, setLoginPending] = useState(false);
   const [workspacePending, setWorkspacePending] = useState(false);
   const [memberPending, setMemberPending] = useState<string | null>(null);
@@ -59,6 +68,9 @@ export default function Home() {
     setSelectedWorkspaceId(null);
     setWorkspace(null);
     setMembers([]);
+    setKnowledgeBases([]);
+    setKnowledgeBasesError(null);
+    setQaPending(false);
     setPassword("");
     setNotice(null);
     setLoginError(message ?? null);
@@ -80,6 +92,8 @@ export default function Home() {
     setSelectedWorkspaceId(item.id);
     setWorkspace(null);
     setMembers([]);
+    setKnowledgeBases([]);
+    setKnowledgeBasesError(null);
     setNotice(null);
     setWorkspacePending(true);
 
@@ -92,8 +106,28 @@ export default function Home() {
       ]);
       setWorkspace(workspaceResult);
       setMembers(memberResult);
+
+      try {
+        setKnowledgeBases(await listKnowledgeBases(item.id, token));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          clearSession("Your session expired. Sign in again to continue.");
+          return;
+        }
+        setKnowledgeBasesError(
+          error instanceof ApiError
+            ? error.message
+            : "We could not load knowledge bases for this workspace.",
+        );
+      }
     } catch (error) {
-      handleApiError(error, "We could not load this workspace.");
+      if (error instanceof ApiError && error.status === 401) {
+        clearSession("Your session expired. Sign in again to continue.");
+      } else {
+        const message =
+          error instanceof ApiError ? error.message : "We could not load this workspace.";
+        setNotice({ tone: "error", message });
+      }
     } finally {
       setWorkspacePending(false);
     }
@@ -266,6 +300,7 @@ export default function Home() {
               key={item.id}
               type="button"
               onClick={() => void selectWorkspace(item, accessToken)}
+              disabled={qaPending}
               aria-current={item.id === selectedWorkspaceId ? "page" : undefined}
             >
               <span className="workspace-avatar" aria-hidden="true">{initials(item.name)}</span>
@@ -275,6 +310,32 @@ export default function Home() {
               </span>
             </button>
           ))}
+        </nav>
+
+        <div className="product-nav-heading">
+          <p className="eyebrow">Product</p>
+        </div>
+        <nav className="product-nav" aria-label="Product navigation">
+          <button
+            type="button"
+            className={productArea === "knowledge-qa" ? "product-link active" : "product-link"}
+            onClick={() => setProductArea("knowledge-qa")}
+            disabled={qaPending}
+            aria-current={productArea === "knowledge-qa" ? "page" : undefined}
+          >
+            <span className="product-icon" aria-hidden="true">✦</span>
+            <span><strong>Knowledge Q&A</strong><small>Grounded answers</small></span>
+          </button>
+          <button
+            type="button"
+            className={productArea === "workspace" ? "product-link active" : "product-link"}
+            onClick={() => setProductArea("workspace")}
+            disabled={qaPending}
+            aria-current={productArea === "workspace" ? "page" : undefined}
+          >
+            <span className="product-icon" aria-hidden="true">⌂</span>
+            <span><strong>Workspace</strong><small>Access & members</small></span>
+          </button>
         </nav>
 
         <div className="sidebar-user">
@@ -292,8 +353,13 @@ export default function Home() {
       <section className="content-shell">
         <header className="topbar">
           <div>
-            <p className="section-kicker">Workspace administration</p>
-            <h1>{selectedWorkspace?.name ?? "Workspaces"}</h1>
+            <p className="section-kicker">
+              {productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : "Workspace administration"}
+            </p>
+            <h1>{productArea === "knowledge-qa" ? "Knowledge Q&A" : selectedWorkspace?.name ?? "Workspaces"}</h1>
+            {productArea === "knowledge-qa" && selectedWorkspace && (
+              <p className="topbar-context">{selectedWorkspace.name}</p>
+            )}
           </div>
           {selectedWorkspace && (
             <span className="role-badge">{formatEnumLabel(selectedWorkspace.role)}</span>
@@ -324,6 +390,18 @@ export default function Home() {
               <span className="spinner" aria-hidden="true" />
               Loading workspace…
             </section>
+          ) : workspace && selectedWorkspace && productArea === "knowledge-qa" ? (
+            <KnowledgeQA
+              key={workspace.id}
+              workspaceId={workspace.id}
+              workspaceName={workspace.name}
+              knowledgeBases={knowledgeBases}
+              knowledgeBasesPending={workspacePending}
+              knowledgeBasesError={knowledgeBasesError}
+              accessToken={accessToken}
+              onUnauthorized={() => clearSession("Your session expired. Sign in again to continue.")}
+              onPendingChange={setQaPending}
+            />
           ) : workspace && selectedWorkspace ? (
             <>
               <section className="overview-grid" aria-label="Workspace overview">
