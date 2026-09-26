@@ -21,6 +21,12 @@ class KnowledgeBaseStatus(StrEnum):
     DISABLED = "disabled"
 
 
+class AgentStatus(StrEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
 class DocumentFileType(StrEnum):
     PDF = "pdf"
     TXT = "txt"

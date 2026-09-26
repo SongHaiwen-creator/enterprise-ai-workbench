@@ -4,16 +4,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Home from "@/app/page";
 import {
+  AgentSummary,
+  AgentRouteResponse,
   ApiError,
   KnowledgeBase,
   Workspace,
   WorkspaceListItem,
   getCurrentUser,
   getWorkspace,
+  listAgents,
   listKnowledgeBases,
   listWorkspaceMembers,
   listWorkspaces,
   login,
+  routeAgentRequest,
 } from "@/utils/api";
 
 vi.mock("@/utils/api", async (importOriginal) => {
@@ -25,7 +29,9 @@ vi.mock("@/utils/api", async (importOriginal) => {
     listWorkspaces: vi.fn(),
     getWorkspace: vi.fn(),
     listWorkspaceMembers: vi.fn(),
+    listAgents: vi.fn(),
     listKnowledgeBases: vi.fn(),
+    routeAgentRequest: vi.fn(),
   };
 });
 
@@ -34,7 +40,9 @@ const mockedGetCurrentUser = vi.mocked(getCurrentUser);
 const mockedListWorkspaces = vi.mocked(listWorkspaces);
 const mockedGetWorkspace = vi.mocked(getWorkspace);
 const mockedListWorkspaceMembers = vi.mocked(listWorkspaceMembers);
+const mockedListAgents = vi.mocked(listAgents);
 const mockedListKnowledgeBases = vi.mocked(listKnowledgeBases);
+const mockedRouteAgentRequest = vi.mocked(routeAgentRequest);
 
 const workspaceItems: WorkspaceListItem[] = [
   {
@@ -83,6 +91,19 @@ function knowledgeBase(
   };
 }
 
+function agent(workspaceId: string, id: string, name: string): AgentSummary {
+  return {
+    id,
+    workspace_id: workspaceId,
+    name,
+    description: null,
+    status: "active",
+    created_by: "user-1",
+    created_at: "2026-09-01T00:00:00Z",
+    updated_at: "2026-09-01T00:00:00Z",
+  };
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -118,6 +139,7 @@ describe("Workspace selection", () => {
     });
     mockedListWorkspaces.mockResolvedValue(workspaceItems);
     mockedListWorkspaceMembers.mockResolvedValue([]);
+    mockedListAgents.mockResolvedValue([]);
   });
 
   afterEach(cleanup);
@@ -127,12 +149,17 @@ describe("Workspace selection", () => {
     const workspaceB = deferred<Workspace>();
     const knowledgeBasesA = deferred<KnowledgeBase[]>();
     const knowledgeBasesB = deferred<KnowledgeBase[]>();
+    const agentsA = deferred<AgentSummary[]>();
+    const agentsB = deferred<AgentSummary[]>();
 
     mockedGetWorkspace.mockImplementation((workspaceId) =>
       workspaceId === "workspace-a" ? workspaceA.promise : workspaceB.promise,
     );
     mockedListKnowledgeBases.mockImplementation((workspaceId) =>
       workspaceId === "workspace-a" ? knowledgeBasesA.promise : knowledgeBasesB.promise,
+    );
+    mockedListAgents.mockImplementation((workspaceId) =>
+      workspaceId === "workspace-a" ? agentsA.promise : agentsB.promise,
     );
 
     const user = await signIn();
@@ -144,6 +171,7 @@ describe("Workspace selection", () => {
       knowledgeBasesB.resolve([
         knowledgeBase("workspace-b", "kb-b", "Beta policies"),
       ]);
+      agentsB.resolve([agent("workspace-b", "agent-b", "Beta Assistant")]);
     });
 
     expect(await screen.findByText("Workspace B", { selector: ".topbar-context" })).toBeInTheDocument();
@@ -154,6 +182,7 @@ describe("Workspace selection", () => {
       knowledgeBasesA.resolve([
         knowledgeBase("workspace-a", "kb-a", "Alpha policies"),
       ]);
+      agentsA.resolve([agent("workspace-a", "agent-a", "Alpha Assistant")]);
     });
 
     await waitFor(() => {
@@ -161,6 +190,77 @@ describe("Workspace selection", () => {
       expect(screen.getByRole("option", { name: "Beta policies" })).toBeInTheDocument();
       expect(screen.queryByRole("option", { name: "Alpha policies" })).not.toBeInTheDocument();
     });
+
+    await user.click(screen.getByRole("button", { name: /Assistant.*Route a request/i }));
+    expect(screen.getByRole("option", { name: "Beta Assistant" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Alpha Assistant" })).not.toBeInTheDocument();
+  });
+
+  it("keeps Knowledge Q&A and Workspace available when Agent listing fails", async () => {
+    mockedListWorkspaces.mockResolvedValue([workspaceItems[0]]);
+    mockedGetWorkspace.mockResolvedValue(workspace(workspaceItems[0]));
+    mockedListKnowledgeBases.mockResolvedValue([
+      knowledgeBase("workspace-a", "kb-a", "Alpha policies"),
+    ]);
+    mockedListAgents.mockRejectedValue(new ApiError("Agent service unavailable", 503));
+
+    const user = await signIn();
+    expect(await screen.findByRole("option", { name: "Alpha policies" }))
+      .toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Assistant.*Route a request/i }));
+    expect(await screen.findByText("We could not load active agents")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Workspace.*Access & members/i }));
+    expect(screen.getByRole("region", { name: "Workspace overview" })).toBeInTheDocument();
+  });
+
+  it("clears Assistant state and context on Workspace switching", async () => {
+    mockedGetWorkspace.mockImplementation(async (workspaceId) =>
+      workspace(workspaceItems.find((item) => item.id === workspaceId)!),
+    );
+    mockedListKnowledgeBases.mockImplementation(async (workspaceId) =>
+      workspaceId === "workspace-a"
+        ? [knowledgeBase("workspace-a", "kb-a", "Alpha policies")]
+        : [knowledgeBase("workspace-b", "kb-b", "Beta policies")],
+    );
+    mockedListAgents.mockImplementation(async (workspaceId) =>
+      workspaceId === "workspace-a"
+        ? [agent("workspace-a", "agent-a", "Alpha Assistant")]
+        : [agent("workspace-b", "agent-b", "Beta Assistant")],
+    );
+    const outcome: AgentRouteResponse = {
+      request: "Check my claim",
+      intent: "tool_request",
+      outcome: {
+        status: "not_executed",
+        required_capability: "enterprise_tool",
+        message: "This request requires an enterprise tool. No action was executed.",
+      },
+    };
+    mockedRouteAgentRequest.mockResolvedValue(outcome);
+
+    const user = await signIn();
+    await user.click(await screen.findByRole("button", { name: /Assistant.*Route a request/i }));
+    await user.type(screen.getByLabelText("Request"), outcome.request);
+    await user.click(screen.getByRole("button", { name: "Route request" }));
+    expect(await screen.findByText("No action was executed")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Workspace B/i }));
+    expect(await screen.findByRole("option", { name: "Beta Assistant" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Knowledge context (optional)")).toHaveValue("kb-b");
+    expect(screen.getByLabelText("Request")).toHaveValue("");
+    expect(screen.getByText("Your Assistant result will appear here")).toBeInTheDocument();
+  });
+
+  it("clears the session when Agent listing returns 401", async () => {
+    mockedListWorkspaces.mockResolvedValue([workspaceItems[0]]);
+    mockedGetWorkspace.mockResolvedValue(workspace(workspaceItems[0]));
+    mockedListKnowledgeBases.mockResolvedValue([]);
+    mockedListAgents.mockRejectedValue(new ApiError("Could not validate credentials", 401));
+
+    await signIn();
+    expect(await screen.findByText("Your session expired. Sign in again to continue."))
+      .toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 
   it("renders an explicit access-denied state when Knowledge Base listing returns 403", async () => {

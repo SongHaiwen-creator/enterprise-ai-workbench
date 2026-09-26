@@ -1,6 +1,6 @@
 # Feature 011 - Agent and Intent Routing
 
-Status: Proposed - awaiting human approval
+Status: Approved - implementation in progress (approval baseline: commit `7524471`, Issue #25)
 Milestone: 3
 
 ## 1. Goal
@@ -36,8 +36,9 @@ framework. It reuses the existing official OpenAI Python SDK, Pydantic,
 `tiktoken`, FastAPI service structure, Workspace authorization dependencies,
 and Feature 009 grounded-answer service.
 
-Implementation, migration creation, and application-code changes must not
-begin until the approval terms in Section 18 are accepted.
+The approval terms in Section 18 were accepted before implementation began.
+Migration execution remains restricted to a dedicated test database; no
+non-test migration or merge to `main` is authorized.
 
 ## 3. Scope
 

@@ -250,6 +250,16 @@ Example agents:
 - IT Support Assistant
 - Policy Q&A Assistant
 
+Feature 011 Alembic revision `0007` creates this table with a database-generated
+UUID primary key; non-null Workspace and creator foreign keys using
+`ON DELETE RESTRICT`; required trimmed non-empty name and system prompt; nullable
+description; status restricted to `draft`, `active`, or `disabled` with a `draft`
+default; non-null timezone-aware creation and update timestamps; and indexes on
+`workspace_id` and `created_by`. The service updates `updated_at` when an Agent
+changes. Agent names are not unique. No Agent-to-Knowledge-Base relation is
+persisted: the optional Knowledge Base ID is supplied per request and resolved
+only for a knowledge question.
+
 ---
 
 # 10. Tool
