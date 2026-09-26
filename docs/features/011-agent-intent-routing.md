@@ -50,8 +50,8 @@ After approval, this feature will:
   disable them.
 - Let any active Workspace member list Agent summaries and submit a request to
   an active Agent.
-- Accept exactly one authorized Knowledge Base as runtime context for each
-  Agent request.
+- Accept an optional Knowledge Base ID as runtime context; require and resolve
+  it only when the validated intent is `knowledge_qa`.
 - Classify each accepted request into the closed taxonomy `knowledge_qa`,
   `tool_request`, or `unsupported` through a narrow routing provider.
 - Validate the provider result against a strict server-owned schema before it
@@ -121,21 +121,25 @@ Assistant request
 -> require active Membership in active route Workspace
 -> load Agent by both route Workspace ID and Agent ID
 -> require Agent status active
--> validate one active, route-Workspace Knowledge Base supplied as context
+-> validate request text and optional Knowledge Base ID syntax
 -> classify normalized request through validated routing provider
-   -> knowledge_qa: call existing grounded-answer service with request Knowledge Base
-   -> tool_request: return fixed not-executed outcome
-   -> unsupported: return fixed unsupported outcome
+   -> knowledge_qa: require Knowledge Base ID; resolve active Knowledge Base
+      within route Workspace; call existing grounded-answer service
+   -> tool_request: return fixed not-executed outcome; no Knowledge Base lookup
+   -> unsupported: return fixed unsupported outcome; no Knowledge Base lookup
 ```
 
-Authorization and tenant checks happen before any provider request. The model
-never decides whether a User is allowed to access a Workspace, Agent, Knowledge
-Base, Document, or future Tool.
+Authentication, active Workspace and Membership checks, Workspace-scoped Agent
+lookup, Agent status, and request validation happen before the routing provider
+call. Knowledge Base existence, ownership, and status are checked only after a
+validated `knowledge_qa` intent. The model never decides whether a User is
+allowed to access a Workspace, Agent, Knowledge Base, Document, or future Tool.
 
 ### 5.2 Routing taxonomy
 
 - `knowledge_qa`: a policy, procedure, or enterprise-knowledge question that
-  should be answered from the request's authorized Knowledge Base context.
+  requires an active, same-Workspace Knowledge Base context before Feature 009
+  can answer it.
 - `tool_request`: a request that needs current or personalized business-system
   data, or asks for an enterprise action, and therefore requires a future
   enterprise Tool.
@@ -157,6 +161,8 @@ The following states remain distinct:
 - Top-level `intent = knowledge_qa` with nested Feature 009
   `status = unsupported`: the request is a knowledge question, but authorized
   retrieval did not provide sufficient evidence.
+- A `knowledge_qa` request without Knowledge Base context: a server-owned
+  `422` error after classification, not an unsupported outcome.
 - Provider or application failure: an error response, never mislabeled as an
   unsupported product outcome.
 
@@ -180,37 +186,44 @@ employee information, request state, or other business data.
 | Option | Benefits | Costs / risks |
 |---|---|---|
 | A. Associate each Agent with one authorized Knowledge Base | Stable context and a request containing only User text | Invents a relationship absent from `DATABASE.md`; adds a column, composite constraint, and lifecycle rules; couples future tool-only Agents to knowledge |
-| B. Accept one Knowledge Base ID at request time | Matches the existing Agent data model and answer-service signature; reuses the authorized Feature 010 selector; adds no extra relationship | Every caller must choose one context and tool/unsupported requests carry an unused context ID |
+| B. Accept an optional Knowledge Base ID at request time | Matches the existing Agent data model and answer-service signature; reuses the authorized Feature 010 selector; lets tool/unsupported requests work without a Knowledge Base | A knowledge question without context needs a clear server-owned error after classification |
 | Multi-Knowledge-Base retrieval | Broader coverage | Requires selection/ranking/permission semantics not demonstrated by the MVP |
 
 ### 6.2 Decision
 
-Use option B: every Feature 011 request carries exactly one
-`knowledge_base_id` selected from the current Workspace's authorized Knowledge
-Base list.
+Use option B: `knowledge_base_id` is optional on the Agent route request. The
+Assistant may supply a UUID selected from the current Workspace's authorized
+Knowledge Base list. Omission and JSON `null` both mean no context. The
+backend accepts any syntactically valid UUID at the request boundary and
+checks ownership and status only if routing selects `knowledge_qa`.
 
-The backend resolves the ID with the route `workspace_id` and requires the
-Knowledge Base to be active before routing. The ID is never sent to the
-routing provider. A `knowledge_qa` result passes the same server-validated ID
-to Feature 009; `tool_request` and `unsupported` do not query it further.
+The backend validates the optional value's UUID syntax as part of request
+validation but does not resolve or query a Knowledge Base before routing. The
+ID is never sent to the routing provider. After a `knowledge_qa` result, an
+absent ID returns the fixed `422` knowledge-context-required error without
+calling Feature 009. A present ID is resolved using both the route
+`workspace_id` and `knowledge_base_id`; only an active, same-Workspace
+Knowledge Base is passed to Feature 009. `tool_request` and `unsupported`
+return without any Knowledge Base lookup, even if a valid UUID was supplied.
 
-This matches the Agent table already planned in `DATABASE.md`, reuses the
-existing answer-service boundary, and avoids inventing a persisted association
-or multi-Knowledge-Base retrieval. Requiring one context in Feature 011 keeps
-the API strict; making it optional for future tool-only Agents can be a
-backward-compatible change when Feature 012 defines that need.
+This matches the Agent table planned in `DATABASE.md`, reuses the existing
+answer-service boundary, and leaves tool-only requests independent of
+Knowledge Base availability. It does not introduce multi-Knowledge-Base
+retrieval or a persisted Agent association.
 
 ## 7. Business Rules
 
 ### BR-001 - Workspace ownership and isolation
 
 An Agent belongs to exactly one Workspace. Every Agent lookup must include both
-the route `workspace_id` and `agent_id`. Every runtime Knowledge Base lookup
-must include the same route `workspace_id` and the request's
-`knowledge_base_id`.
+the route `workspace_id` and `agent_id`. When `knowledge_qa` needs a supplied
+Knowledge Base, its lookup must include both the same route `workspace_id` and
+the request's `knowledge_base_id`.
 
-Cross-Workspace Agent and Knowledge Base identifiers return the scoped
-not-found response and must not disclose foreign resource details.
+A foreign or missing Agent ID returns the scoped not-found response. A foreign
+or missing Knowledge Base ID returns the same scoped Knowledge Base not-found
+response only on the knowledge route. Tool and unsupported routes do not
+resolve, disclose, or echo a supplied Knowledge Base ID.
 
 ### BR-002 - Agent status
 
@@ -243,8 +256,7 @@ administration, or system-administration permissions.
 Any authenticated User with an active Membership in an active Workspace may:
 
 - list active Agent summaries in that Workspace, and
-- submit a request to an active Agent with one active, same-Workspace
-  Knowledge Base as runtime context.
+- submit a request to an active Agent with or without Knowledge Base context.
 
 `agent_admin` and `system_admin` may additionally request inactive summaries
 for configuration management. Employees and knowledge administrators cannot
@@ -293,20 +305,33 @@ Fixed server instructions delimit both the system prompt and User request as
 data. Neither value can replace the taxonomy, enable tools, broaden provider
 access, or authorize a resource.
 
+The Agent `system_prompt` configures the Agent's routing scope and intent
+classification behavior. It is intentionally not injected into the existing
+Feature 009 grounded-answer generation prompt.
+
 ### BR-007 - Knowledge route reuse
 
-After a validated `knowledge_qa` result, the Agent service calls the existing
-Feature 009 `answer_question` service with:
+After a validated `knowledge_qa` result, the Agent service requires a
+Knowledge Base ID. If absent, it returns a server-owned `422` error with
+`detail = "Knowledge base context is required for knowledge questions."`
+without calling Feature 009, retrieval, embedding, or grounded generation.
+
+If present, the service looks up the Knowledge Base by both ID and route
+Workspace ID and requires it to be active. A missing or foreign ID returns
+the same scoped `404`; a disabled Knowledge Base returns `409`. These checks
+precede Feature 009. The Agent service then calls the existing Feature 009
+`answer_question` service with:
 
 - the authorized route Workspace ID,
-- the request's already validated Knowledge Base ID,
+- the request's now authorized Knowledge Base ID,
 - the normalized User request,
 - the existing embedding provider, and
 - the existing grounded-generation provider.
 
 Feature 011 does not change Top-K, retrieval filters, generation prompts,
 grounding rules, citation validation, or unsupported-evidence behavior. The
-Agent system prompt is not inserted into Feature 009 grounded generation.
+Agent system prompt governs routing configuration and is intentionally not
+inserted into Feature 009 grounded-answer generation.
 
 ### BR-008 - External request behavior
 
@@ -499,10 +524,24 @@ Request:
 ```
 
 `request` is trimmed and contains 1 to 2,000 characters.
-`knowledge_base_id` is required and must identify an active Knowledge Base in
-the route Workspace. Unknown fields are rejected. Context validation occurs
-before the routing provider call, but the identifier is not included in model
-input.
+`knowledge_base_id` is an optional UUID. It may be omitted or sent as `null`.
+Unknown fields and malformed UUIDs are rejected during request validation.
+Before routing, the backend checks only authentication, active Workspace,
+active Membership, scoped Agent existence, active Agent status, and request
+shape. It does not query a Knowledge Base. The optional ID is not included in
+model input.
+
+For `tool_request` or `unsupported`, this body is also valid:
+
+```json
+{
+  "request": "What is the status of my reimbursement request?"
+}
+```
+
+A valid UUID supplied for those two intents is ignored without a Knowledge
+Base query. It is not echoed in the response; its existence, Workspace, and
+status cannot affect those outcomes.
 
 Knowledge route response: `200 OK`
 
@@ -544,6 +583,16 @@ The nested outcome is the existing Feature 009 response contract. It may have
 `status = unsupported` when evidence is insufficient while the top-level
 intent remains `knowledge_qa`.
 
+If the router returns `knowledge_qa` and `knowledge_base_id` was omitted or
+`null`, the backend returns `422 Unprocessable Entity` with this stable,
+server-owned error and does not call Feature 009:
+
+```json
+{
+  "detail": "Knowledge base context is required for knowledge questions."
+}
+```
+
 Tool route response: `200 OK`
 
 ```json
@@ -580,11 +629,13 @@ outcome shape.
 - `401 Unauthorized`: missing or invalid authentication.
 - `403 Forbidden`: missing/inactive Workspace Membership or insufficient
   Agent-management role.
-- `404 Not Found`: scoped Workspace, Agent, or runtime Knowledge Base not
-  found.
-- `409 Conflict`: Agent or runtime Knowledge Base is not active.
-- `422 Unprocessable Entity`: request/configuration validation failure or
-  routing input above the fixed local budget.
+- `404 Not Found`: scoped Workspace or Agent not found; on `knowledge_qa`
+  only, a supplied Knowledge Base is missing or belongs to another Workspace.
+- `409 Conflict`: Agent is not active; on `knowledge_qa` only, the scoped
+  Knowledge Base is disabled.
+- `422 Unprocessable Entity`: request/configuration validation failure,
+  routing input above the fixed local budget, or the exact
+  knowledge-context-required error shown above after `knowledge_qa` routing.
 - `502 Bad Gateway`: sanitized routing, embedding, or generation provider
   failure or invalid provider output.
 - `503 Service Unavailable`: a required provider is not configured.
@@ -630,15 +681,18 @@ Agent use request
 -> current User
 -> active Workspace Membership
 -> Workspace-scoped active Agent lookup
+-> request validation; optional Knowledge Base ID remains unresolved
 -> narrow routing provider
 -> strict output validation
    -> knowledge_qa
+      -> require Knowledge Base ID or return fixed 422
+      -> scoped active Knowledge Base lookup
       -> existing Feature 009 answer service
       -> existing retrieval / grounded generation / citations
    -> tool_request
-      -> fixed non-executed response
+      -> fixed non-executed response; no Knowledge Base query
    -> unsupported
-      -> fixed unsupported response
+      -> fixed unsupported response; no Knowledge Base query
 ```
 
 No workflow engine, graph runtime, repository layer, queue, or persistence for
@@ -674,15 +728,21 @@ The Assistant surface will:
 
 - load Agent summaries for the selected Workspace,
 - let the User select only an active Agent,
-- reuse the selected Workspace's authorized Knowledge Base list and let the
-  User select exactly one active Knowledge Base as runtime context,
+- reuse the selected Workspace's authorized Knowledge Base list and
+  default-select an active Knowledge Base when one exists,
+- allow the User to select another active Knowledge Base or no knowledge
+  context before submission,
 - show an empty state when no active Agent exists,
-- show a knowledge-context empty state when no active Knowledge Base exists,
+- show knowledge-context guidance when no active Knowledge Base exists or the
+  list cannot be loaded, while keeping Agent requests available,
 - accept one validated 1-to-2,000-character request,
 - prevent duplicate submission and context switching while pending,
 - render a grounded answer and citations for `knowledge_qa` using the existing
   Feature 010 response types and visual patterns without refactoring or
   changing the Feature 010 component,
+- present the server-owned knowledge-context-required `422` as a prompt to
+  select an active Knowledge Base; retain the typed request so it can be
+  resubmitted,
 - render a clear non-executed enterprise-capability state for `tool_request`,
 - render an explicit out-of-scope state for top-level `unsupported`, and
 - distinguish `401` session expiry, `403` access denial, `404` stale/missing
@@ -695,18 +755,24 @@ The typed API client adds:
 - `AgentSummary`,
 - the three-variant discriminated `AgentRouteResponse` union,
 - `listAgents(workspaceId, accessToken)` using the active-only default, and
-- `routeAgentRequest(workspaceId, agentId, request, knowledgeBaseId, token)`.
+- `routeAgentRequest(workspaceId, agentId, request, optionalKnowledgeBaseId,
+  token)`.
 
-API utility tests verify the exact paths, JSON body, Bearer header, and typed
-response handling. The new Assistant component must call only the Agent route;
-it must not call the Feature 009 answer endpoint directly.
+When no Knowledge Base is selected, the client omits `knowledge_base_id` from
+the JSON body. It does not classify the request locally or require knowledge
+context before submission. API utility tests verify the exact paths, both body
+shapes, Bearer header, and typed response handling. The new Assistant
+component calls only the Agent route; it does not call the Feature 009 answer
+endpoint directly.
 
 Workspace switching clears Agent selection, Knowledge Base selection, and all
 Assistant request/result state before loading the new Workspace's scoped
 resources. Agent-list failure is isolated from the existing Workspace and
 Knowledge Q&A loads so the new surface cannot make those product areas
-unavailable. A `401` clears the in-memory session. The browser never calls
-OpenAI or performs routing.
+unavailable. Knowledge Base list failure does not block Agent routing, though
+it prevents selection of a context from that list until recovery. A `401`
+clears the in-memory session. The browser never calls OpenAI or performs
+routing.
 
 Agent configuration management remains API-only in Feature 011. A frontend
 administration form is not needed to demonstrate routing and would duplicate
@@ -733,15 +799,17 @@ Employees and knowledge administrators receive `403` for those operations.
 ### AC-003 - Active-member use
 
 Every active Workspace role can list summaries and use an active Agent.
-Use also requires one active Knowledge Base in the route Workspace.
-Inactive/missing Memberships, disabled Workspaces, inactive Knowledge Bases,
-and draft/disabled Agents cannot reach routing.
+No Knowledge Base is required to reach routing. Invalid authentication,
+inactive/missing Memberships, disabled Workspaces, missing/foreign Agents,
+draft/disabled Agents, and invalid request shapes cannot reach the routing
+provider.
 
 ### AC-004 - Workspace isolation
 
-All Agent and Knowledge Base lookups are Workspace-scoped. A foreign ID cannot
-be combined with an authorized route or disclose whether the foreign resource
-exists.
+All Agent lookups and knowledge-branch Knowledge Base lookups are
+Workspace-scoped. A missing or foreign Knowledge Base ID on a knowledge route
+uses the same scoped `404`. A supplied Knowledge Base UUID does not trigger a
+lookup or reveal information on tool or unsupported routes.
 
 ### AC-005 - Validated routing taxonomy
 
@@ -752,20 +820,27 @@ fails closed and no confidence score is exposed.
 ### AC-006 - Knowledge reuse
 
 A `knowledge_qa` route calls the existing Feature 009 answer service with the
-request's validated Knowledge Base context and retains Workspace isolation,
-active Membership rules, Knowledge Base/Document eligibility, grounded
-citations, and explicit insufficient-evidence behavior.
+request's validated active, same-Workspace Knowledge Base context and retains
+Workspace isolation, active Membership rules, Knowledge Base/Document
+eligibility, grounded citations, and explicit insufficient-evidence behavior.
+Absent context returns the fixed knowledge-context-required `422` after
+routing, without a Feature 009 call. Missing, foreign, or disabled context is
+rejected before Feature 009 without disclosing foreign Workspace data. The
+Agent `system_prompt` remains routing configuration and does not alter Feature
+009 generation.
 
 ### AC-007 - Tool safety
 
 A `tool_request` returns the documented fixed not-executed outcome. It does not
 select a Tool, generate arguments, call an enterprise API, fabricate business
-data, create an approval, or persist an execution log.
+data, create an approval, persist an execution log, or query a Knowledge Base.
+It succeeds without knowledge context.
 
 ### AC-008 - Unsupported behavior
 
 An out-of-scope request returns the explicit top-level `unsupported` outcome
-and does not call retrieval, grounded generation, or a Tool.
+and does not query a Knowledge Base or call retrieval, grounded generation, or
+a Tool. It succeeds without knowledge context.
 
 ### AC-009 - Provider isolation
 
@@ -777,7 +852,8 @@ sanitized failures.
 
 The frontend demonstrates all three routing outcomes in a separate Assistant
 area while preserving the Feature 010 Knowledge Q&A interface and existing
-Workspace administration behavior.
+Workspace administration behavior. No Knowledge Base does not block Agent
+submission; a knowledge-context-required response prompts context selection.
 
 ### AC-011 - No live calls in tests
 
@@ -816,8 +892,9 @@ providers and pass without `OPENAI_API_KEY`, internet access, or paid calls.
 - Missing and cross-Workspace Agent and Knowledge Base IDs.
 - Call-count proof that missing/invalid authentication, disabled Users,
   missing/invited/disabled Memberships, disabled Workspaces, missing/foreign
-  Agents or Knowledge Bases, inactive Knowledge Bases, and draft/disabled
-  Agents are all rejected before routing-provider invocation.
+  Agents, draft/disabled Agents, and invalid request shapes are rejected
+  before routing-provider invocation. Knowledge Base existence/status is not
+  checked at this stage.
 
 ### 16.3 Routing and knowledge reuse
 
@@ -835,11 +912,26 @@ providers and pass without `OPENAI_API_KEY`, internet access, or paid calls.
 - Knowledge routing calls the existing answer service with the validated
   runtime Knowledge Base and preserves answered and insufficient-evidence
   variants.
+- Knowledge routing with omitted or `null` context returns the exact
+  server-owned knowledge-context-required `422` after one routing call and
+  before any Knowledge Base lookup, Feature 009 call, embedding, or generation.
+- Knowledge routing with a valid, active, same-Workspace context succeeds;
+  missing and foreign UUIDs produce indistinguishable scoped `404` responses,
+  and a disabled scoped Knowledge Base produces `409`, all before Feature 009.
+- Malformed supplied UUIDs fail request validation before routing, while
+  well-formed UUIDs are never resolved before classification.
 - Existing Feature 009 citation verification and disabled/non-ready Document
   eligibility through regression tests.
 - Tool routing makes no retrieval, grounded-generation, Tool, enterprise API,
-  approval, or persistence call and returns no fabricated business data.
-- Unsupported routing makes no retrieval or grounded-generation call.
+  approval, persistence, or Knowledge Base query and returns no fabricated
+  business data. It succeeds with an omitted, `null`, valid, missing, foreign,
+  or disabled Knowledge Base ID, provided any supplied value is a valid UUID.
+- Unsupported routing also succeeds with each of those context variants and
+  makes no Knowledge Base, retrieval, or grounded-generation call.
+- Both non-knowledge intents succeed in a Workspace with zero Knowledge Bases;
+  no Knowledge Base listing or lookup is required by the route.
+- Tool and unsupported responses do not echo a supplied Knowledge Base ID or
+  reveal whether it exists, is disabled, or belongs to another Workspace.
 - Routing failures never become unsupported outcomes.
 - Sanitized errors/logs contain no request, prompt, secret, or provider body.
 
@@ -848,7 +940,8 @@ providers and pass without `OPENAI_API_KEY`, internet access, or paid calls.
 Mocked component tests cover:
 
 - Workspace-scoped Agent loading and active-Agent selection,
-- active Knowledge Base context selection and exact scoped route request,
+- optional Knowledge Base selection, active default when available, and exact
+  route request bodies with and without `knowledge_base_id`,
 - Workspace switch reset and reload,
 - rejection of late Agent-list responses after a Workspace switch,
 - isolation proving an Agent-list failure does not break Workspace or Knowledge
@@ -859,7 +952,11 @@ Mocked component tests cover:
 - top-level `unsupported` rendering,
 - pending state and duplicate-submit prevention,
 - blank request validation,
-- no-active-Agent and no-active-Knowledge-Base states,
+- no-active-Agent state and no-active-Knowledge-Base guidance without blocking
+  tool or unsupported routing, including a Workspace with zero Knowledge
+  Bases or a failed Knowledge Base list request,
+- knowledge-context-required `422` prompting selection while retaining the
+  typed request,
 - Assistant visibility and successful use for ordinary active members,
 - `401` session clearing,
 - `403` access denied,
@@ -869,8 +966,8 @@ Mocked component tests cover:
 - `502`/`503` provider/service failure, and
 - generic API/network failure.
 
-API utility tests cover active-summary listing and exact Agent-route URL, body,
-Bearer header, and response-union typing.
+API utility tests cover active-summary listing and exact Agent-route URL,
+optional-context JSON body variants, Bearer header, and response-union typing.
 
 ### 16.5 Verification after approval
 
@@ -913,10 +1010,13 @@ Before implementation, a human must approve all of the following:
 1. **Migration:** create additive Alembic revision `0007` and the `agents`
    table, constraints, and indexes described in Section 9; do not modify or
    execute destructive operations against earlier migrations or existing data.
-2. **Knowledge context:** require exactly one active, same-Workspace
-   `knowledge_base_id` in each routing request, validate it before the provider
-   call, and use it only on the knowledge branch; do not persist an Agent
-   association or implement multi-Knowledge-Base retrieval.
+2. **Knowledge context:** make `knowledge_base_id` optional on each routing
+   request. Validate only its UUID syntax before routing. Require it after a
+   `knowledge_qa` decision and return the fixed knowledge-context-required
+   `422` if absent; resolve active, same-Workspace context only for that
+   branch. Tool and unsupported routes must not query a Knowledge Base. Do
+   not persist an Agent association or implement multi-Knowledge-Base
+   retrieval.
 3. **Authorization:** allow all active members to list Agent summaries and use
    active Agents; restrict full configuration, create, and update to
    `agent_admin` and `system_admin`; do not grant adjacent Knowledge Base,
@@ -933,9 +1033,9 @@ Before implementation, a human must approve all of the following:
    complete instructions, Agent prompt, User request, and schema before the
    call, 64 maximum output tokens, 30-second timeout, and zero retries.
 7. **Control and validation:** accept only the three-value enum; expose no
-   confidence; keep authorization, Knowledge Base selection, public messages,
-   and downstream behavior server-owned; return sanitized `422`, `502`, and
-   `503` failures as documented.
+   confidence; keep authorization, knowledge-context validation, public
+   messages, and downstream behavior server-owned; return sanitized `422`,
+   `502`, and `503` failures as documented.
 8. **Knowledge reuse:** route knowledge through the unchanged Feature 009
    answer service; do not add the Agent prompt to grounded generation or
    duplicate retrieval/citation logic.
