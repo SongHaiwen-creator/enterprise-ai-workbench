@@ -2,10 +2,13 @@
 
 import { FormEvent, useRef, useState } from "react";
 
+import { Assistant } from "@/app/components/assistant";
+import type { AgentsLoadFailure } from "@/app/components/assistant";
 import { KnowledgeQA } from "@/app/components/knowledge-qa";
 import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
 
 import {
+  AgentSummary,
   ApiError,
   CurrentUser,
   KnowledgeBase,
@@ -17,6 +20,7 @@ import {
   createWorkspaceMember,
   getCurrentUser,
   getWorkspace,
+  listAgents,
   listKnowledgeBases,
   listWorkspaceMembers,
   listWorkspaces,
@@ -35,7 +39,7 @@ const ROLES: MembershipRole[] = [
 const STATUSES: MembershipStatus[] = ["invited", "active", "disabled"];
 
 type Notice = { tone: "success" | "error"; message: string } | null;
-type ProductArea = "knowledge-qa" | "workspace";
+type ProductArea = "assistant" | "knowledge-qa" | "workspace";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -46,6 +50,9 @@ export default function Home() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [agentsPending, setAgentsPending] = useState(false);
+  const [agentsError, setAgentsError] = useState<AgentsLoadFailure>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [knowledgeBasesError, setKnowledgeBasesError] =
     useState<KnowledgeBasesLoadFailure>(null);
@@ -72,12 +79,53 @@ export default function Home() {
     setSelectedWorkspaceId(null);
     setWorkspace(null);
     setMembers([]);
+    setAgents([]);
+    setAgentsPending(false);
+    setAgentsError(null);
     setKnowledgeBases([]);
     setKnowledgeBasesError(null);
     setQaPending(false);
     setPassword("");
     setNotice(null);
     setLoginError(message ?? null);
+  }
+
+  async function loadAgentsForWorkspace(
+    workspaceId: string,
+    token: string,
+    requestGeneration: number,
+  ) {
+    setAgentsPending(true);
+    setAgentsError(null);
+    try {
+      const agentResult = await listAgents(workspaceId, token);
+      if (requestGeneration !== workspaceRequestGeneration.current) return;
+      setAgents(agentResult);
+    } catch (error) {
+      if (requestGeneration !== workspaceRequestGeneration.current) return;
+      if (error instanceof ApiError && error.status === 401) {
+        clearSession("Your session expired. Sign in again to continue.");
+        return;
+      }
+      setAgentsError(
+        error instanceof ApiError && error.status === 403
+          ? {
+              kind: "forbidden",
+              message: "You do not have access to Agents in this workspace.",
+            }
+          : {
+              kind: "error",
+              message:
+                error instanceof ApiError
+                  ? error.message
+                  : "We could not load Agents for this workspace.",
+            },
+      );
+    } finally {
+      if (requestGeneration === workspaceRequestGeneration.current) {
+        setAgentsPending(false);
+      }
+    }
   }
 
   function handleApiError(error: unknown, fallback: string) {
@@ -97,10 +145,14 @@ export default function Home() {
     setSelectedWorkspaceId(item.id);
     setWorkspace(null);
     setMembers([]);
+    setAgents([]);
+    setAgentsPending(true);
+    setAgentsError(null);
     setKnowledgeBases([]);
     setKnowledgeBasesError(null);
     setNotice(null);
     setWorkspacePending(true);
+    void loadAgentsForWorkspace(item.id, token, requestGeneration);
 
     try {
       const [workspaceResult, memberResult, knowledgeBaseResult] = await Promise.all([
@@ -347,6 +399,16 @@ export default function Home() {
         <nav className="product-nav" aria-label="Product navigation">
           <button
             type="button"
+            className={productArea === "assistant" ? "product-link active" : "product-link"}
+            onClick={() => setProductArea("assistant")}
+            disabled={qaPending}
+            aria-current={productArea === "assistant" ? "page" : undefined}
+          >
+            <span className="product-icon" aria-hidden="true">✧</span>
+            <span><strong>Assistant</strong><small>Route a request</small></span>
+          </button>
+          <button
+            type="button"
             className={productArea === "knowledge-qa" ? "product-link active" : "product-link"}
             onClick={() => setProductArea("knowledge-qa")}
             disabled={qaPending}
@@ -383,10 +445,10 @@ export default function Home() {
         <header className="topbar">
           <div>
             <p className="section-kicker">
-              {productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : "Workspace administration"}
+              {productArea === "assistant" ? "Workspace / Agent" : productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : "Workspace administration"}
             </p>
-            <h1>{productArea === "knowledge-qa" ? "Knowledge Q&A" : selectedWorkspace?.name ?? "Workspaces"}</h1>
-            {productArea === "knowledge-qa" && selectedWorkspace && (
+            <h1>{productArea === "assistant" ? "Assistant" : productArea === "knowledge-qa" ? "Knowledge Q&A" : selectedWorkspace?.name ?? "Workspaces"}</h1>
+            {productArea !== "workspace" && selectedWorkspace && (
               <p className="topbar-context">{selectedWorkspace.name}</p>
             )}
           </div>
@@ -419,6 +481,25 @@ export default function Home() {
               <span className="spinner" aria-hidden="true" />
               Loading workspace…
             </section>
+          ) : workspace && selectedWorkspace && productArea === "assistant" ? (
+            <Assistant
+              key={workspace.id}
+              workspaceId={workspace.id}
+              workspaceName={workspace.name}
+              agents={agents}
+              agentsPending={agentsPending}
+              agentsError={agentsError}
+              knowledgeBases={knowledgeBases}
+              knowledgeBasesError={knowledgeBasesError}
+              accessToken={accessToken}
+              onUnauthorized={() => clearSession("Your session expired. Sign in again to continue.")}
+              onPendingChange={setQaPending}
+              onRetryAgents={() => void loadAgentsForWorkspace(
+                workspace.id,
+                accessToken,
+                workspaceRequestGeneration.current,
+              )}
+            />
           ) : workspace && selectedWorkspace && productArea === "knowledge-qa" ? (
             <KnowledgeQA
               key={workspace.id}

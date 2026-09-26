@@ -88,6 +88,38 @@ export interface GroundedAnswerResponse {
   generation: GenerationMetadata;
 }
 
+export interface AgentSummary {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  status: "draft" | "active" | "disabled";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type AgentRouteResponse =
+  | {
+      request: string;
+      intent: "knowledge_qa";
+      outcome: GroundedAnswerResponse;
+    }
+  | {
+      request: string;
+      intent: "tool_request";
+      outcome: {
+        status: "not_executed";
+        required_capability: "enterprise_tool";
+        message: string;
+      };
+    }
+  | {
+      request: string;
+      intent: "unsupported";
+      outcome: { status: "unsupported"; message: string };
+    };
+
 export interface MembershipUpdate {
   role?: MembershipRole;
   status?: MembershipStatus;
@@ -215,6 +247,37 @@ export function listKnowledgeBases(
   return requestJson<KnowledgeBase[]>(
     `/api/workspaces/${workspaceId}/knowledge-bases`,
     {},
+    accessToken,
+  );
+}
+
+export function listAgents(
+  workspaceId: string,
+  accessToken: string,
+): Promise<AgentSummary[]> {
+  return requestJson<AgentSummary[]>(
+    `/api/workspaces/${workspaceId}/agents`,
+    {},
+    accessToken,
+  );
+}
+
+export function routeAgentRequest(
+  workspaceId: string,
+  agentId: string,
+  request: string,
+  knowledgeBaseId: string | null,
+  accessToken: string,
+): Promise<AgentRouteResponse> {
+  return requestJson<AgentRouteResponse>(
+    `/api/workspaces/${workspaceId}/agents/${agentId}/route`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        request,
+        ...(knowledgeBaseId ? { knowledge_base_id: knowledgeBaseId } : {}),
+      }),
+    },
     accessToken,
   );
 }

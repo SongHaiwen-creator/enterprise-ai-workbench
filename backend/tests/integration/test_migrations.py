@@ -136,7 +136,7 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     with postgres_engine.connect() as connection:
         migration_context = MigrationContext.configure(connection)
-        assert migration_context.get_current_revision() == "0006"
+        assert migration_context.get_current_revision() == "0007"
 
 
 def test_knowledge_base_migration_upgrades_and_downgrades(
@@ -468,4 +468,71 @@ def test_document_workspace_ownership_migration_rejects_legacy_inconsistency_ato
             command.upgrade(alembic_config, "0006")
         finally:
             connection.rollback()
+            command.upgrade(alembic_config, "head")
+
+
+def test_agent_migration_upgrades_and_downgrades(postgres_engine: Engine) -> None:
+    alembic_config = Config(str(BACKEND_ROOT / "alembic.ini"))
+
+    with postgres_engine.connect() as connection:
+        alembic_config.attributes["connection"] = connection
+        try:
+            command.downgrade(alembic_config, "0006")
+            assert "agents" not in inspect(connection).get_table_names()
+
+            command.upgrade(alembic_config, "0007")
+            inspector = inspect(connection)
+            assert {column["name"] for column in inspector.get_columns("agents")} == {
+                "id",
+                "workspace_id",
+                "name",
+                "description",
+                "system_prompt",
+                "status",
+                "created_by",
+                "created_at",
+                "updated_at",
+            }
+            assert {index["name"] for index in inspector.get_indexes("agents")} == {
+                "ix_agents_created_by",
+                "ix_agents_workspace_id",
+            }
+            check_names = {
+                constraint["name"] for constraint in inspector.get_check_constraints("agents")
+            }
+            assert check_names == {
+                "ck_agents_status_values",
+                "ck_agents_name_not_empty",
+                "ck_agents_system_prompt_not_empty",
+            }
+            foreign_keys = {
+                tuple(foreign_key["constrained_columns"]): (
+                    foreign_key["referred_table"],
+                    foreign_key["options"].get("ondelete"),
+                )
+                for foreign_key in inspector.get_foreign_keys("agents")
+            }
+            assert foreign_keys == {
+                ("created_by",): ("users", "RESTRICT"),
+                ("workspace_id",): ("workspaces", "RESTRICT"),
+            }
+            columns = {column["name"]: column for column in inspector.get_columns("agents")}
+            assert "draft" in columns["status"]["default"]
+            assert columns["created_at"]["default"] == "CURRENT_TIMESTAMP"
+            assert columns["updated_at"]["default"] == "CURRENT_TIMESTAMP"
+            assert str(columns["name"]["type"]) == "VARCHAR(255)"
+            assert str(columns["status"]["type"]) == "VARCHAR(32)"
+            assert columns["description"]["nullable"] is True
+            assert columns["system_prompt"]["nullable"] is False
+            assert columns["created_at"]["type"].timezone is True
+            assert columns["updated_at"]["type"].timezone is True
+
+            command.downgrade(alembic_config, "0006")
+            assert "agents" not in inspect(connection).get_table_names()
+            assert {"chunks", "documents", "knowledge_bases"} <= set(
+                inspect(connection).get_table_names()
+            )
+        finally:
+            connection.rollback()
+            command.upgrade(alembic_config, "head")
             command.upgrade(alembic_config, "head")

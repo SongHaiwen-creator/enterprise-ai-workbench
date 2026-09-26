@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     generation_retrieval_limit: Literal[5] = 5
     generation_max_input_tokens: Literal[12000] = 12000
     generation_max_output_tokens: Literal[1200] = 1200
+    routing_model: Literal["gpt-5.6-terra"] = "gpt-5.6-terra"
+    routing_reasoning_effort: Literal["low"] = "low"
+    routing_prompt_version: Literal["agent-intent-routing-v1"] = (
+        "agent-intent-routing-v1"
+    )
+    routing_max_input_tokens: Literal[8000] = 8000
+    routing_max_output_tokens: Literal[64] = 64
     openai_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
 
     @field_validator("jwt_secret_key")
