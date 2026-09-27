@@ -27,6 +27,17 @@ class AgentStatus(StrEnum):
     DISABLED = "disabled"
 
 
+class ToolRisk(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ToolStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
 class DocumentFileType(StrEnum):
     PDF = "pdf"
     TXT = "txt"

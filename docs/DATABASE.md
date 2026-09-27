@@ -260,11 +260,17 @@ changes. Agent names are not unique. No Agent-to-Knowledge-Base relation is
 persisted: the optional Knowledge Base ID is supplied per request and resolved
 only for a knowledge question.
 
+Feature 012 Alembic revision `0008` adds unique `(id, workspace_id)` on
+`agents` so Agent-to-Tool assignments can enforce same-Workspace ownership
+with a composite foreign key.
+
 ---
 
 # 10. Tool
 
-Represents an external business capability callable by an agent.
+Represents a Workspace configuration for one application-registered enterprise
+capability. Persistence enables and names a known capability; it never stores
+executable code, URLs, credentials, request schemas, or provider instructions.
 
 Table: tools
 
@@ -274,19 +280,42 @@ Fields:
 |---|---|---|
 | id | UUID | Primary key |
 | workspace_id | UUID | Foreign key → workspaces.id |
-| name | VARCHAR | Tool name |
-| description | TEXT | Tool purpose |
-| tool_type | VARCHAR | api / mock_api |
-| endpoint | VARCHAR | API endpoint |
-| risk_level | VARCHAR | low / medium / high |
+| tool_key | VARCHAR(64) | Stable application-registry key |
+| name | VARCHAR(255) | Workspace display name |
+| description | TEXT | Administrative description; never sent to the selector |
+| risk_level | VARCHAR(16) | low / medium / high; must match the registry |
 | status | VARCHAR | active / disabled |
+| created_by | UUID | Foreign key → users.id |
 | created_at | TIMESTAMP | Creation time |
+| updated_at | TIMESTAMP | Last update time |
 
-Example:
+Feature 012 registers exactly:
 
-- get_expense_status
+- get_reimbursement_status
+- get_employee_information
 - create_it_access_request
-- get_employee_profile
+
+Revision `0008` creates unique `(workspace_id, tool_key)` and
+`(id, workspace_id)` constraints, non-empty and enum checks, `RESTRICT`
+Workspace/creator foreign keys, and Workspace/creator indexes. Status defaults
+to `disabled`. Operation type and argument/result schemas remain immutable
+application registry data and are not persisted.
+
+## 10.1 Agent Tool Assignment
+
+Table: agent_tools
+
+| Field | Type | Description |
+|---|---|---|
+| workspace_id | UUID | Direct foreign key → workspaces.id |
+| agent_id | UUID | Part of primary key; composite foreign key → agents(id, workspace_id) |
+| tool_id | UUID | Part of primary key; composite foreign key → tools(id, workspace_id) |
+
+The `(agent_id, tool_id)` primary key makes assignment idempotent. Both
+composite foreign keys and the direct Workspace foreign key use `ON DELETE
+RESTRICT`, preventing a cross-Workspace edge even if service validation is
+bypassed. An assignment may be staged while either object is inactive, but it
+is effective for routing only when the Agent and Tool are both active.
 
 ---
 
@@ -454,7 +483,6 @@ To be decided during later feature design:
 
 - Fine-grained document permissions
 - Department-level knowledge access
-- Agent-to-tool many-to-many relationships
 - Workflow node representation
 - Conversation message structure
 - Prompt version management

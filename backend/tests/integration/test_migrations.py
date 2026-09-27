@@ -136,7 +136,7 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     with postgres_engine.connect() as connection:
         migration_context = MigrationContext.configure(connection)
-        assert migration_context.get_current_revision() == "0007"
+        assert migration_context.get_current_revision() == "0008"
 
 
 def test_knowledge_base_migration_upgrades_and_downgrades(
@@ -535,4 +535,78 @@ def test_agent_migration_upgrades_and_downgrades(postgres_engine: Engine) -> Non
         finally:
             connection.rollback()
             command.upgrade(alembic_config, "head")
+            command.upgrade(alembic_config, "head")
+
+
+def test_tool_migration_upgrades_downgrades_and_reupgrades(
+    postgres_engine: Engine,
+) -> None:
+    alembic_config = Config(str(BACKEND_ROOT / "alembic.ini"))
+
+    with postgres_engine.connect() as connection:
+        alembic_config.attributes["connection"] = connection
+        try:
+            command.downgrade(alembic_config, "0007")
+            inspector = inspect(connection)
+            assert "tools" not in inspector.get_table_names()
+            assert "agent_tools" not in inspector.get_table_names()
+            assert "uq_agents_id_workspace_id" not in {
+                item["name"] for item in inspector.get_unique_constraints("agents")
+            }
+
+            command.upgrade(alembic_config, "0008")
+            inspector = inspect(connection)
+            assert {column["name"] for column in inspector.get_columns("tools")} == {
+                "id", "workspace_id", "tool_key", "name", "description",
+                "risk_level", "status", "created_by", "created_at", "updated_at",
+            }
+            assert {
+                item["name"] for item in inspector.get_unique_constraints("tools")
+            } >= {"uq_tools_workspace_tool_key", "uq_tools_id_workspace_id"}
+            assert {
+                item["name"] for item in inspector.get_unique_constraints("agents")
+            } >= {"uq_agents_id_workspace_id"}
+            assert {index["name"] for index in inspector.get_indexes("tools")} >= {
+                "ix_tools_workspace_id", "ix_tools_created_by",
+            }
+            assert {
+                item["name"] for item in inspector.get_check_constraints("tools")
+            } >= {
+                "ck_tools_tool_key_format", "ck_tools_name_not_empty",
+                "ck_tools_description_not_empty", "ck_tools_risk_level_values",
+                "ck_tools_status_values",
+            }
+            tool_foreign_keys = {
+                tuple(item["constrained_columns"]): (
+                    item["referred_table"], item["options"].get("ondelete")
+                )
+                for item in inspector.get_foreign_keys("tools")
+            }
+            assert tool_foreign_keys == {
+                ("workspace_id",): ("workspaces", "RESTRICT"),
+                ("created_by",): ("users", "RESTRICT"),
+            }
+            assert {column["name"] for column in inspector.get_columns("agent_tools")} == {
+                "workspace_id", "agent_id", "tool_id",
+            }
+            assignment_foreign_keys = {
+                tuple(item["constrained_columns"]): (
+                    item["referred_table"], item["options"].get("ondelete")
+                )
+                for item in inspector.get_foreign_keys("agent_tools")
+            }
+            assert assignment_foreign_keys == {
+                ("workspace_id",): ("workspaces", "RESTRICT"),
+                ("agent_id", "workspace_id"): ("agents", "RESTRICT"),
+                ("tool_id", "workspace_id"): ("tools", "RESTRICT"),
+            }
+
+            command.downgrade(alembic_config, "0007")
+            inspector = inspect(connection)
+            assert "tools" not in inspector.get_table_names()
+            assert "agent_tools" not in inspector.get_table_names()
+            command.upgrade(alembic_config, "0008")
+            assert {"tools", "agent_tools"} <= set(inspect(connection).get_table_names())
+        finally:
+            connection.rollback()
             command.upgrade(alembic_config, "head")

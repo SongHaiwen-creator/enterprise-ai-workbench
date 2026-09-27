@@ -1,9 +1,14 @@
 from app.models.agent import Agent
+from app.models.agent_tool import AgentTool
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase
 from app.models.membership import Membership
+from app.models.tool import Tool
 from app.models.user import User
 from app.models.workspace import Workspace
 
-__all__ = ["Agent", "Chunk", "Document", "KnowledgeBase", "Membership", "User", "Workspace"]
+__all__ = [
+    "Agent", "AgentTool", "Chunk", "Document", "KnowledgeBase", "Membership",
+    "Tool", "User", "Workspace",
+]

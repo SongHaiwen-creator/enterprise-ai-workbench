@@ -376,6 +376,15 @@ td select { min-width: 9rem; min-height: 2.25rem; font-size: 0.76rem; }
 .assistant-retry-button { margin-top: 1rem; border: 1px solid #a8beb5; border-radius: 0.55rem; padding: 0.6rem 0.9rem; color: var(--forest); background: #fff; font-size: 0.8rem; font-weight: 750; }
 .assistant-retry-button:hover { background: #f5f9f7; }
 .assistant-tool-state .state-icon { color: #76561b; background: #fff1d7; }
+.assistant-tool-result h2, .assistant-approval-result h2 { margin-top: 0.35rem; }
+.tool-result-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; margin: 1.25rem 0; }
+.tool-result-grid > div { padding: 0.8rem 0.9rem; border: 1px solid var(--border); border-radius: 0.65rem; background: #fafcfb; }
+.tool-result-grid dt { color: var(--muted); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.tool-result-grid dd { margin: 0.25rem 0 0; overflow-wrap: anywhere; font-weight: 650; text-transform: capitalize; }
+.tool-result-grid .tool-result-wide { grid-column: 1 / -1; }
+.tool-result-message { color: var(--muted); line-height: 1.6; }
+.approval-status { color: #76561b; font-weight: 750; }
+@media (max-width: 640px) { .tool-result-grid { grid-template-columns: 1fr; } }
 .assistant-context-required .state-icon { color: #76561b; background: #fff1d7; }
 
 @keyframes pulse { 0%, 70%, 100% { opacity: 0.35; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-0.18rem); } }

@@ -10,6 +10,7 @@ from app.api.dependencies.authorization import (
 )
 from app.api.dependencies.generation import ConfiguredGenerationProvider
 from app.api.dependencies.routing import ConfiguredRoutingProvider
+from app.api.dependencies.tool_selection import ConfiguredToolSelector
 from app.models.enums import AgentStatus, KnowledgeBaseStatus, MembershipRole
 from app.schemas.agent import (
     AgentConfigurationResponse,
@@ -22,7 +23,6 @@ from app.schemas.agent_routing import (
     AgentRouteResponse,
     KnowledgeRouteResponse,
     RoutingIntent,
-    ToolNotExecutedOutcome,
     ToolRouteResponse,
     UnsupportedOutcome,
     UnsupportedRouteResponse,
@@ -49,6 +49,16 @@ from app.services.routing import (
     RoutingInputTooLargeError,
     RoutingProviderError,
 )
+from app.services.tool_selection import (
+    ToolSelectionConfigurationError,
+    ToolSelectionInputTooLargeError,
+    ToolSelectionProviderError,
+)
+from app.services.tools import (
+    ToolAdapterError,
+    ToolRegistryConfigurationError,
+    handle_tool_request,
+)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/agents", tags=["agents"])
 
@@ -62,9 +72,6 @@ AGENT_RESPONSES = {
     503: {"model": ErrorResponse},
 }
 KNOWLEDGE_CONTEXT_REQUIRED = "Knowledge base context is required for knowledge questions."
-TOOL_NOT_EXECUTED_MESSAGE = (
-    "This request requires an enterprise tool. No action was executed."
-)
 UNSUPPORTED_MESSAGE = "This request is outside the configured Agent capabilities."
 
 
@@ -143,7 +150,9 @@ def route_agent_request(
     payload: AgentRouteRequest,
     session: DatabaseSession,
     _membership: ActiveWorkspaceMembership,
+    current_user: CurrentUser,
     routing_provider: ConfiguredRoutingProvider,
+    tool_selector: ConfiguredToolSelector,
     settings: ApplicationSettings,
     generation_provider: ConfiguredGenerationProvider,
 ) -> AgentRouteResponse:
@@ -163,14 +172,30 @@ def route_agent_request(
         raise HTTPException(status_code=502, detail=ROUTING_PROVIDER_FAILURE)
 
     if intent is RoutingIntent.TOOL_REQUEST:
+        try:
+            outcome = handle_tool_request(
+                session,
+                workspace_id=workspace_id,
+                agent_id=agent.id,
+                request=payload.request,
+                agent_scope=agent.system_prompt,
+                user_id=current_user.id,
+                user_name=current_user.name,
+                user_email=current_user.email,
+                selector=tool_selector,
+            )
+        except ToolSelectionInputTooLargeError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ToolSelectionConfigurationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except (ToolSelectionProviderError, ToolAdapterError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except ToolRegistryConfigurationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return ToolRouteResponse(
             request=payload.request,
             intent=RoutingIntent.TOOL_REQUEST,
-            outcome=ToolNotExecutedOutcome(
-                status="not_executed",
-                required_capability="enterprise_tool",
-                message=TOOL_NOT_EXECUTED_MESSAGE,
-            ),
+            outcome=outcome,
         )
     if intent is RoutingIntent.UNSUPPORTED:
         return UnsupportedRouteResponse(

@@ -49,6 +49,11 @@ def test_embedding_contract_has_fixed_mvp_defaults() -> None:
     assert settings.generation_retrieval_limit == 5
     assert settings.generation_max_input_tokens == 12000
     assert settings.generation_max_output_tokens == 1200
+    assert settings.tool_selector_model == "gpt-5.6-terra"
+    assert settings.tool_selector_reasoning_effort == "low"
+    assert settings.tool_selector_prompt_version == "enterprise-tool-selector-v1"
+    assert settings.tool_selector_max_input_tokens == 8000
+    assert settings.tool_selector_max_output_tokens == 512
     assert settings.openai_timeout_seconds == 30
 
 
@@ -63,6 +68,11 @@ def test_embedding_contract_has_fixed_mvp_defaults() -> None:
         ("generation_retrieval_limit", 10),
         ("generation_max_input_tokens", 24000),
         ("generation_max_output_tokens", 2400),
+        ("tool_selector_model", "incompatible-model"),
+        ("tool_selector_reasoning_effort", "medium"),
+        ("tool_selector_prompt_version", "unversioned"),
+        ("tool_selector_max_input_tokens", 16000),
+        ("tool_selector_max_output_tokens", 1024),
         ("openai_timeout_seconds", 0),
     ],
 )

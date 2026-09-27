@@ -99,6 +99,80 @@ export interface AgentSummary {
   updated_at: string;
 }
 
+export interface ReimbursementStatusResult {
+  type: "reimbursement_status";
+  reimbursement_reference: string;
+  status: "submitted" | "under_review" | "approved" | "rejected" | "paid";
+  amount_minor: number;
+  currency: "CNY";
+  submitted_on: string;
+  last_updated_on: string;
+}
+
+export interface EmployeeInformationResult {
+  type: "employee_information";
+  name: string;
+  email: string;
+  department: string;
+  job_title: string;
+  employment_status: "active";
+}
+
+export interface PublicToolReference {
+  tool_key:
+    | "get_reimbursement_status"
+    | "get_employee_information"
+    | "create_it_access_request";
+  name: string;
+}
+
+export type ToolExecutedOutcome =
+  | {
+      status: "executed";
+      tool: PublicToolReference & { tool_key: "get_reimbursement_status" };
+      executed: true;
+      approval_required: false;
+      validated_arguments: Record<string, never>;
+      result: ReimbursementStatusResult;
+      message: string;
+    }
+  | {
+      status: "executed";
+      tool: PublicToolReference & { tool_key: "get_employee_information" };
+      executed: true;
+      approval_required: false;
+      validated_arguments: { subject: "self" };
+      result: EmployeeInformationResult;
+      message: string;
+    };
+
+export type ToolOutcome =
+  | ToolExecutedOutcome
+  | {
+      status: "approval_required";
+      tool: PublicToolReference & { tool_key: "create_it_access_request" };
+      executed: false;
+      approval_required: true;
+      validated_arguments: {
+        system: "production_database" | "analytics_warehouse" | "source_control";
+        access_level: "read_only" | "standard";
+        business_justification: string;
+        duration_days: number;
+      };
+      result: null;
+      message: string;
+    }
+  | {
+      status: "not_executed";
+      tool: null;
+      executed: false;
+      approval_required: false;
+      reason: "no_available_tool" | "no_matching_tool" | "missing_required_arguments";
+      validated_arguments: null;
+      result: null;
+      message: string;
+    };
+
 export type AgentRouteResponse =
   | {
       request: string;
@@ -108,11 +182,7 @@ export type AgentRouteResponse =
   | {
       request: string;
       intent: "tool_request";
-      outcome: {
-        status: "not_executed";
-        required_capability: "enterprise_tool";
-        message: string;
-      };
+      outcome: ToolOutcome;
     }
   | {
       request: string;

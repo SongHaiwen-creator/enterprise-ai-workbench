@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     )
     routing_max_input_tokens: Literal[8000] = 8000
     routing_max_output_tokens: Literal[64] = 64
+    tool_selector_model: Literal["gpt-5.6-terra"] = "gpt-5.6-terra"
+    tool_selector_reasoning_effort: Literal["low"] = "low"
+    tool_selector_prompt_version: Literal["enterprise-tool-selector-v1"] = (
+        "enterprise-tool-selector-v1"
+    )
+    tool_selector_max_input_tokens: Literal[8000] = 8000
+    tool_selector_max_output_tokens: Literal[512] = 512
     openai_timeout_seconds: float = Field(default=30.0, gt=0, le=120)
 
     @field_validator("jwt_secret_key")

@@ -1,6 +1,6 @@
 # Feature 012 - Enterprise Tool Calling
 
-Status: Proposed - human approval required before implementation
+Status: Implemented - Pull Request review pending; not merged
 Milestone: 3
 Issue: #27
 
@@ -1635,3 +1635,8 @@ migration file `0008` plus execution against the dedicated test database only.
 It does not authorize a non-test migration, real external integration, real or
 mock write execution, Feature 013 work, merge to `main`, or any destructive
 database operation.
+
+Approval recorded 2026-09-27: the human maintainer approved all thirteen
+items above against Issue #27 and Phase A baseline commit `743f3b9`. The
+authorization remains limited to this Feature 012 scope and the dedicated
+test database.
