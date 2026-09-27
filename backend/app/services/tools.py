@@ -7,15 +7,27 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Agent, AgentTool, Tool
-from app.models.enums import AgentStatus, ToolRisk, ToolStatus
+from app.models import Agent, AgentTool, Membership, Tool, User, Workspace
+from app.models.enums import (
+    AgentStatus,
+    MembershipStatus,
+    ToolRisk,
+    ToolStatus,
+    UserStatus,
+    WorkspaceStatus,
+)
 from app.schemas.tool import ToolConfigurationResponse, ToolCreate, ToolUpdate
 from app.schemas.tool_calling import (
     ToolApprovalRequiredOutcome,
     ToolExecutedOutcome,
     ToolNotExecutedOutcome,
 )
-from app.services.exceptions import ConflictError, NotFoundError
+from app.services.exceptions import (
+    WORKSPACE_ACCESS_DENIED,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+)
 from app.services.tool_execution import ToolExecutionContext
 from app.services.tool_registry import (
     ToolDefinition,
@@ -253,6 +265,38 @@ def _fresh_effective_tool(
     return tool
 
 
+def _fresh_authorized_caller_identity(
+    session: Session,
+    workspace_id: UUID,
+    user_id: UUID,
+) -> tuple[str, str]:
+    authorization = session.execute(
+        select(
+            User.name.label("user_name"),
+            User.email.label("user_email"),
+            User.status.label("user_status"),
+            Workspace.status.label("workspace_status"),
+            Membership.status.label("membership_status"),
+        )
+        .select_from(User)
+        .join(Membership, Membership.user_id == User.id)
+        .join(Workspace, Workspace.id == Membership.workspace_id)
+        .where(
+            User.id == user_id,
+            Workspace.id == workspace_id,
+            Membership.workspace_id == workspace_id,
+        )
+    ).one_or_none()
+    if (
+        authorization is None
+        or authorization.user_status is not UserStatus.ACTIVE
+        or authorization.workspace_status is not WorkspaceStatus.ACTIVE
+        or authorization.membership_status is not MembershipStatus.ACTIVE
+    ):
+        raise ForbiddenError(WORKSPACE_ACCESS_DENIED)
+    return authorization.user_name, authorization.user_email
+
+
 def _not_executed(
     reason: Literal[
         "no_available_tool", "no_matching_tool", "missing_required_arguments"
@@ -272,8 +316,6 @@ def handle_tool_request(
     request: str,
     agent_scope: str,
     user_id: UUID,
-    user_name: str,
-    user_email: str,
     selector: ToolSelector,
 ) -> ToolExecutedOutcome | ToolApprovalRequiredOutcome | ToolNotExecutedOutcome:
     configured = eligible_tools(session, workspace_id, agent_id)
@@ -291,6 +333,9 @@ def handle_tool_request(
     if not isinstance(selection, ToolSelectionProposal):
         raise ToolAdapterError(TOOL_PROVIDER_FAILURE)
 
+    user_name, user_email = _fresh_authorized_caller_identity(
+        session, workspace_id, user_id
+    )
     tool = _fresh_effective_tool(
         session, workspace_id, agent_id, selection.tool_key
     )

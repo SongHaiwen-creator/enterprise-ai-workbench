@@ -1,3 +1,6 @@
+WORKSPACE_ACCESS_DENIED = "Not authorized for this workspace"
+
+
 class ServiceError(Exception):
     def __init__(self, detail: str) -> None:
         self.detail = detail

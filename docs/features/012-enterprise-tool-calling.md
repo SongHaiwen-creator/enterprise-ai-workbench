@@ -594,6 +594,7 @@ Every real Tool proposal follows:
 provider function name and JSON arguments
 -> exact one-call structural validation
 -> selected key exists in the candidate allowlist
+-> fresh PostgreSQL User + Workspace + Membership active-state authorization
 -> fresh scoped Tool + assignment + active-state resolution
 -> registry definition lookup and persisted-risk consistency
 -> JSON parse with duplicate/invalid structure rejection
@@ -836,8 +837,10 @@ the hard immediate-execution flag remain code-owned registry policy.
 
 A Tool may execute only when every condition is true:
 
-1. The authenticated User and active Membership were accepted.
-2. The route Workspace is active.
+1. The authenticated User and active Membership were accepted initially and
+   freshly revalidated from PostgreSQL after a real Tool proposal.
+2. The route Workspace was accepted initially and is still active at that
+   final authorization revalidation.
 3. The route Agent is active and belongs to that Workspace.
 4. The Tool belongs to that Workspace.
 5. The Tool is active.
@@ -854,15 +857,24 @@ Failure of any condition prevents dispatch. In particular,
 `create_it_access_request` has no Feature 012 write adapter and cannot execute
 even if a database row is manually misconfigured as low risk.
 
-### 15.3 State changes during selection
+### 15.3 Authorization and capability changes during selection
 
-Tool selection is not a lock or authorization grant. After the external call,
-the service freshly re-resolves the selected Tool and association by route
-Workspace and active state immediately before dispatch. A Tool found disabled
-or unassigned at that final revalidation returns a safe `409` and makes no
-adapter call.
+Tool selection is not a lock or authorization grant. After the external call
+returns a real Tool proposal, the service first re-reads the authenticated
+User, route Workspace, and User/Workspace Membership from PostgreSQL. The User,
+Workspace, and Membership must each still be active. A missing or inactive
+record returns the existing generic Workspace access-denied `403`; it does not
+reveal which authorization state changed. This check occurs before argument
+validation, read-only adapter dispatch, or returning validated
+`approval_required` arguments. Adapter identity fields also come from this
+fresh User query rather than the earlier FastAPI dependency object.
 
-This check does not claim to close a state-change race after the final read.
+The service then freshly re-resolves the selected Agent, Tool, and assignment
+by route Workspace and active state immediately before dispatch. A Tool found
+disabled or unassigned at that final capability revalidation returns a safe
+`409` and makes no adapter call.
+
+These checks do not claim to close a state-change race after the final reads.
 That residual race is accepted only for deterministic, side-effect-free local
 read adapters in Feature 012. Tests simulate changes visible at final
 revalidation. Feature 013 must design locking/idempotency and stronger
@@ -1165,7 +1177,8 @@ Feature 011 route
    -> query active assigned same-Workspace Tool configurations
    -> no eligible Tool: server-owned not_executed; no selector
    -> lazy Feature 012 Tool selector
-   -> validate and freshly authorize selected capability
+   -> real proposal: freshly revalidate User + Workspace + Membership access
+   -> freshly revalidate selected Agent + Tool + assignment capability
    -> validate exact typed arguments and business rules
    -> low-risk registry read-only Tool: project-owned mock adapter
    -> medium/high/write-sensitive Tool: approval_required, no execution
@@ -1441,6 +1454,15 @@ or network.
 - Tool disabled/unassigned and visible as such at final post-selection
   revalidation returns `409` and no adapter call; tests do not claim to close
   a state change after that final read.
+- A real proposal triggers a fresh PostgreSQL read of authenticated User,
+  route Workspace, and Membership state before capability revalidation,
+  argument disclosure, or adapter dispatch.
+- User, Workspace, or Membership revocation while selection is in flight
+  returns the same generic Workspace access-denied `403`, with active Agent,
+  Tool, and assignment controls proving caller authorization caused denial.
+- Caller authorization loss blocks both read adapter execution and the
+  `approval_required` response, so validated sensitive arguments are not
+  returned after access is revoked.
 - Foreign IDs are never disclosed in normal User outcomes.
 - Knowledge and unsupported intents make no Tool query, selector, adapter,
   approval, or mock-service call.
@@ -1640,3 +1662,11 @@ Approval recorded 2026-09-27: the human maintainer approved all thirteen
 items above against Issue #27 and Phase A baseline commit `743f3b9`. The
 authorization remains limited to this Feature 012 scope and the dedicated
 test database.
+
+Independent-review remediation recorded 2026-09-27: after a real selector
+proposal, Feature 012 now freshly revalidates active User, Workspace, and
+Membership state from PostgreSQL before capability revalidation, argument
+disclosure, or read-only dispatch. This closes the reported selector-flight
+authorization window without adding locks, long-running transactions, write
+execution, or Feature 013 behavior. The documented residual race after the
+final reads remains accepted only for deterministic side-effect-free adapters.

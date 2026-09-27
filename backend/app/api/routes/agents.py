@@ -180,8 +180,6 @@ def route_agent_request(
                 request=payload.request,
                 agent_scope=agent.system_prompt,
                 user_id=current_user.id,
-                user_name=current_user.name,
-                user_email=current_user.email,
                 selector=tool_selector,
             )
         except ToolSelectionInputTooLargeError as exc:

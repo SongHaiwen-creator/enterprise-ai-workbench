@@ -1150,3 +1150,102 @@ def test_registry_risk_mismatch_fails_closed_before_selection(
     assert response.status_code == 503
     assert response.json() == {"detail": "Tool configuration is unavailable"}
     assert tool_selector.calls == []
+
+
+@pytest.mark.parametrize("revoked_resource", ["membership", "workspace", "user"])
+def test_caller_authorization_is_revalidated_after_selection_before_read_dispatch(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+    monkeypatch: pytest.MonkeyPatch,
+    revoked_resource: str,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    active_membership = membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller)
+    assign(db_session, scope, selected, configured)
+    selector_calls: list[str] = []
+    adapter_calls: list[object] = []
+
+    def revoke_during_selection(
+        request: str,
+        agent_scope: str,
+        candidates: tuple[ToolDefinition, ...],
+    ) -> ToolSelection:
+        del agent_scope, candidates
+        selector_calls.append(request)
+        if revoked_resource == "membership":
+            active_membership.status = MembershipStatus.DISABLED
+        elif revoked_resource == "workspace":
+            scope.status = WorkspaceStatus.DISABLED
+        else:
+            caller.status = UserStatus.DISABLED
+        db_session.flush()
+        return ToolSelectionProposal("get_reimbursement_status", {})
+
+    def forbidden_adapter(*args: object) -> None:
+        adapter_calls.extend(args)
+        pytest.fail("adapter executed after caller authorization was revoked")
+
+    tool_selector.select = revoke_during_selection  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "app.services.tool_execution.get_reimbursement_status", forbidden_adapter
+    )
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Check my reimbursement"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Not authorized for this workspace"}
+    assert selector_calls == ["Check my reimbursement"]
+    assert adapter_calls == []
+    assert selected.status is AgentStatus.ACTIVE
+    assert configured.status is ToolStatus.ACTIVE
+    assert db_session.get(AgentTool, (selected.id, configured.id)) is not None
+
+
+def test_authorization_revocation_blocks_approval_required_arguments(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    active_membership = membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller, tool_key="create_it_access_request")
+    assign(db_session, scope, selected, configured)
+    arguments = {
+        "system": "production_database",
+        "access_level": "read_only",
+        "business_justification": "Investigate approved production incidents.",
+        "duration_days": 14,
+    }
+
+    def revoke_during_selection(
+        request: str,
+        agent_scope: str,
+        candidates: tuple[ToolDefinition, ...],
+    ) -> ToolSelection:
+        del request, agent_scope, candidates
+        active_membership.status = MembershipStatus.DISABLED
+        db_session.flush()
+        return ToolSelectionProposal("create_it_access_request", arguments)
+
+    tool_selector.select = revoke_during_selection  # type: ignore[method-assign]
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Request temporary production access"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Not authorized for this workspace"}
+    assert "validated_arguments" not in response.text
+    assert selected.status is AgentStatus.ACTIVE
+    assert configured.status is ToolStatus.ACTIVE
+    assert db_session.get(AgentTool, (selected.id, configured.id)) is not None
