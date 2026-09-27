@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.answer import GroundedAnswerResponse
+from app.schemas.tool_calling import ToolOutcome
 
 
 class RoutingIntent(StrEnum):
@@ -35,14 +36,6 @@ class ModelRoutingOutput(BaseModel):
     intent: RoutingIntent
 
 
-class ToolNotExecutedOutcome(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: Literal["not_executed"]
-    required_capability: Literal["enterprise_tool"]
-    message: str
-
-
 class UnsupportedOutcome(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -63,7 +56,7 @@ class ToolRouteResponse(BaseModel):
 
     request: str
     intent: Literal[RoutingIntent.TOOL_REQUEST]
-    outcome: ToolNotExecutedOutcome
+    outcome: ToolOutcome
 
 
 class UnsupportedRouteResponse(BaseModel):

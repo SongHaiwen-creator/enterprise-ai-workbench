@@ -8,15 +8,18 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies.generation import get_generation_provider
 from app.api.dependencies.routing import get_routing_provider
+from app.api.dependencies.tool_selection import get_tool_selector
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
 from app.main import app
-from app.models import Agent, KnowledgeBase, Membership, User, Workspace
+from app.models import Agent, AgentTool, KnowledgeBase, Membership, Tool, User, Workspace
 from app.models.enums import (
     AgentStatus,
     KnowledgeBaseStatus,
     MembershipRole,
     MembershipStatus,
+    ToolRisk,
+    ToolStatus,
     UserStatus,
     WorkspaceStatus,
 )
@@ -29,6 +32,12 @@ from app.services.routing import (
     RoutingConfigurationError,
     RoutingInputTooLargeError,
     RoutingProviderError,
+)
+from app.services.tool_registry import ToolDefinition
+from app.services.tool_selection import (
+    ToolSelection,
+    ToolSelectionDecline,
+    ToolSelectionProposal,
 )
 
 pytestmark = pytest.mark.integration
@@ -65,6 +74,23 @@ class FakeGenerationProvider:
         raise AssertionError("generation must be mocked at the answer service boundary")
 
 
+class FakeToolSelector:
+    def __init__(self) -> None:
+        self.selection: ToolSelection = ToolSelectionDecline(
+            reason="no_matching_capability"
+        )
+        self.calls: list[tuple[str, str, tuple[ToolDefinition, ...]]] = []
+
+    def select(
+        self,
+        request: str,
+        agent_scope: str,
+        candidates: tuple[ToolDefinition, ...],
+    ) -> ToolSelection:
+        self.calls.append((request, agent_scope, candidates))
+        return self.selection
+
+
 @pytest.fixture
 def auth_settings(database_urls: tuple[object, object]) -> Settings:
     database_url, test_database_url = database_urls
@@ -83,10 +109,16 @@ def router_provider() -> FakeRoutingProvider:
 
 
 @pytest.fixture
+def tool_selector() -> FakeToolSelector:
+    return FakeToolSelector()
+
+
+@pytest.fixture
 def client(
     db_session: Session,
     auth_settings: Settings,
     router_provider: FakeRoutingProvider,
+    tool_selector: FakeToolSelector,
 ) -> Generator[TestClient, None, None]:
     def override_db_session() -> Generator[Session, None, None]:
         yield db_session
@@ -94,6 +126,7 @@ def client(
     app.dependency_overrides[get_db_session] = override_db_session
     app.dependency_overrides[get_settings] = lambda: auth_settings
     app.dependency_overrides[get_routing_provider] = lambda: router_provider
+    app.dependency_overrides[get_tool_selector] = lambda: tool_selector
     app.dependency_overrides[get_generation_provider] = FakeGenerationProvider
     try:
         with TestClient(app) as test_client:
@@ -102,6 +135,7 @@ def client(
         app.dependency_overrides.pop(get_db_session, None)
         app.dependency_overrides.pop(get_settings, None)
         app.dependency_overrides.pop(get_routing_provider, None)
+        app.dependency_overrides.pop(get_tool_selector, None)
         app.dependency_overrides.pop(get_generation_provider, None)
 
 
@@ -182,6 +216,44 @@ def knowledge_base(
     return result
 
 
+def tool(
+    session: Session,
+    scope: Workspace,
+    creator: User,
+    *,
+    tool_key: str = "get_reimbursement_status",
+    status: ToolStatus = ToolStatus.ACTIVE,
+) -> Tool:
+    risks = {
+        "get_reimbursement_status": "low",
+        "get_employee_information": "low",
+        "create_it_access_request": "high",
+    }
+    result = Tool(
+        workspace_id=scope.id,
+        created_by=creator.id,
+        tool_key=tool_key,
+        name=tool_key.replace("_", " ").title(),
+        description=f"Administrative description for {tool_key}.",
+        risk_level=ToolRisk(risks[tool_key]),
+        status=status,
+    )
+    session.add(result)
+    session.flush()
+    return result
+
+
+def assign(session: Session, scope: Workspace, selected: Agent, configured: Tool) -> None:
+    session.add(
+        AgentTool(
+            workspace_id=scope.id,
+            agent_id=selected.id,
+            tool_id=configured.id,
+        )
+    )
+    session.flush()
+
+
 def bearer(caller: User, settings: Settings) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(caller.id, settings)}"}
 
@@ -245,8 +317,13 @@ def test_active_roles_list_summaries_and_route_without_knowledge_base(
         "intent": "tool_request",
         "outcome": {
             "status": "not_executed",
-            "required_capability": "enterprise_tool",
-            "message": "This request requires an enterprise tool. No action was executed.",
+            "tool": None,
+            "executed": False,
+            "approval_required": False,
+            "reason": "no_available_tool",
+            "validated_arguments": None,
+            "result": None,
+            "message": "No permitted enterprise capability can safely handle this request.",
         },
     }
     assert router_provider.calls == [
@@ -732,3 +809,443 @@ def test_unvalidated_fake_provider_output_fails_closed(
     )
     assert result.status_code == 502
     assert result.json() == {"detail": "Routing provider request failed"}
+
+
+@pytest.mark.parametrize("role", [MembershipRole.AGENT_ADMIN, MembershipRole.SYSTEM_ADMIN])
+def test_tool_administrators_manage_configuration_and_assignments(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    role: MembershipRole,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    membership(db_session, caller, scope, role=role)
+    selected = agent(db_session, scope, caller)
+    headers = bearer(caller, auth_settings)
+    collection_path = f"/api/workspaces/{scope.id}/tools"
+
+    created = client.post(
+        collection_path,
+        headers=headers,
+        json={
+            "tool_key": "get_reimbursement_status",
+            "name": " Reimbursement status ",
+            "description": " Read the signed-in employee's latest record. ",
+        },
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body == {
+        "id": body["id"],
+        "workspace_id": str(scope.id),
+        "tool_key": "get_reimbursement_status",
+        "name": "Reimbursement status",
+        "description": "Read the signed-in employee's latest record.",
+        "operation_type": "read_only",
+        "risk_level": "low",
+        "status": "disabled",
+        "created_by": str(caller.id),
+        "created_at": body["created_at"],
+        "updated_at": body["updated_at"],
+    }
+    assert client.post(
+        collection_path,
+        headers=headers,
+        json={
+            "tool_key": "get_reimbursement_status",
+            "name": "Duplicate",
+            "description": "Duplicate configuration.",
+        },
+    ).status_code == 409
+    assert client.post(
+        collection_path,
+        headers=headers,
+        json={
+            "tool_key": "unknown_tool",
+            "name": "Unknown",
+            "description": "Unknown capability.",
+        },
+    ).status_code == 422
+
+    tool_id = body["id"]
+    item_path = f"{collection_path}/{tool_id}"
+    updated = client.patch(
+        item_path, headers=headers, json={"name": "Claim status", "status": "active"}
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Claim status"
+    assert updated.json()["status"] == "active"
+    assert client.patch(item_path, headers=headers, json={}).status_code == 422
+    assert client.get(collection_path, headers=headers).json()[0]["id"] == tool_id
+
+    assignment_path = f"/api/workspaces/{scope.id}/agents/{selected.id}/tools"
+    assigned = client.put(f"{assignment_path}/{tool_id}", headers=headers)
+    assert assigned.status_code == 200
+    assert assigned.json()["id"] == tool_id
+    assert client.put(f"{assignment_path}/{tool_id}", headers=headers).status_code == 200
+    assert client.put(
+        f"{assignment_path}/{tool_id}", headers=headers, json={"unexpected": True}
+    ).status_code == 422
+    assert [item["id"] for item in client.get(assignment_path, headers=headers).json()] == [
+        tool_id
+    ]
+    assert client.delete(f"{assignment_path}/{tool_id}", headers=headers).status_code == 204
+    assert client.request(
+        "delete", f"{assignment_path}/{tool_id}", headers=headers,
+        json={"unexpected": True},
+    ).status_code == 422
+    assert client.delete(f"{assignment_path}/{tool_id}", headers=headers).status_code == 204
+
+
+@pytest.mark.parametrize("role", [MembershipRole.EMPLOYEE, MembershipRole.KNOWLEDGE_ADMIN])
+def test_non_administrators_cannot_discover_or_manage_tools(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    role: MembershipRole,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    membership(db_session, caller, scope, role=role)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller)
+    headers = bearer(caller, auth_settings)
+
+    paths = [
+        ("get", f"/api/workspaces/{scope.id}/tools", None),
+        ("get", f"/api/workspaces/{scope.id}/tools/{configured.id}", None),
+        (
+            "post",
+            f"/api/workspaces/{scope.id}/tools",
+            {
+                "tool_key": "get_employee_information",
+                "name": "Employee",
+                "description": "Own profile.",
+            },
+        ),
+        ("patch", f"/api/workspaces/{scope.id}/tools/{configured.id}", {"status": "disabled"}),
+        ("get", f"/api/workspaces/{scope.id}/agents/{selected.id}/tools", None),
+        ("put", f"/api/workspaces/{scope.id}/agents/{selected.id}/tools/{configured.id}", None),
+        ("delete", f"/api/workspaces/{scope.id}/agents/{selected.id}/tools/{configured.id}", None),
+    ]
+    for method, path, body in paths:
+        response = client.request(method, path, headers=headers, json=body)
+        assert response.status_code == 403
+        assert response.json() == {"detail": "Agent administrator role required"}
+
+
+def test_assigned_read_only_tool_executes_once_with_backend_identity(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    router_provider: FakeRoutingProvider,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller)
+    assign(db_session, scope, selected, configured)
+    tool_selector.selection = ToolSelectionProposal("get_reimbursement_status", {})
+
+    response = client.post(
+        route(scope, selected),
+        headers=bearer(caller, auth_settings),
+        json={"request": "Check my reimbursement"},
+    )
+
+    assert response.status_code == 200
+    outcome = response.json()["outcome"]
+    assert outcome["status"] == "executed"
+    assert outcome["tool"] == {
+        "tool_key": "get_reimbursement_status", "name": configured.name
+    }
+    assert outcome["executed"] is True
+    assert outcome["approval_required"] is False
+    assert outcome["validated_arguments"] == {}
+    assert outcome["result"]["type"] == "reimbursement_status"
+    assert outcome["result"]["currency"] == "CNY"
+    assert len(router_provider.calls) == len(tool_selector.calls) == 1
+    assert [item.tool_key for item in tool_selector.calls[0][2]] == [
+        "get_reimbursement_status"
+    ]
+
+
+def test_employee_tool_returns_only_authenticated_profile(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller, tool_key="get_employee_information")
+    assign(db_session, scope, selected, configured)
+    tool_selector.selection = ToolSelectionProposal(
+        "get_employee_information", {"subject": "self"}
+    )
+
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Show my employee profile"},
+    )
+    result = response.json()["outcome"]["result"]
+    assert response.status_code == 200
+    assert result["type"] == "employee_information"
+    assert result["name"] == caller.name
+    assert result["email"] == caller.email
+    assert set(result) == {
+        "type", "name", "email", "department", "job_title", "employment_status"
+    }
+
+
+def test_sensitive_tool_requires_approval_without_creating_or_executing(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller, tool_key="create_it_access_request")
+    assign(db_session, scope, selected, configured)
+    arguments = {
+        "system": "production_database",
+        "access_level": "read_only",
+        "business_justification": "Investigate approved production incidents.",
+        "duration_days": 14,
+    }
+    tool_selector.selection = ToolSelectionProposal(
+        "create_it_access_request", arguments
+    )
+
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Request temporary production access"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["outcome"] == {
+        "status": "approval_required",
+        "tool": {"tool_key": "create_it_access_request", "name": configured.name},
+        "executed": False,
+        "approval_required": True,
+        "validated_arguments": arguments,
+        "result": None,
+        "message": "This request requires human approval and was not executed.",
+    }
+
+
+def test_disabled_unassigned_and_foreign_tools_are_not_effective(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    foreign_scope = workspace(db_session)
+    membership(db_session, caller, scope, role=MembershipRole.AGENT_ADMIN)
+    selected = agent(db_session, scope, caller)
+    disabled = tool(
+        db_session, scope, caller, status=ToolStatus.DISABLED
+    )
+    assign(db_session, scope, selected, disabled)
+    foreign = tool(db_session, foreign_scope, caller)
+    headers = bearer(caller, auth_settings)
+
+    response = client.post(
+        route(scope, selected), headers=headers, json={"request": "Check status"}
+    )
+    assert response.status_code == 200
+    assert response.json()["outcome"]["reason"] == "no_available_tool"
+    assert tool_selector.calls == []
+    foreign_assignment = client.put(
+        f"/api/workspaces/{scope.id}/agents/{selected.id}/tools/{foreign.id}",
+        headers=headers,
+    )
+    assert foreign_assignment.status_code == 404
+    assert foreign_assignment.json() == {"detail": "Tool not found"}
+
+
+def test_invalid_selector_arguments_are_sanitized_provider_failure(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller, tool_key="get_employee_information")
+    assign(db_session, scope, selected, configured)
+    tool_selector.selection = ToolSelectionProposal(
+        "get_employee_information", {"subject": "other", "email": "victim@example.com"}
+    )
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Show another employee"},
+    )
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Tool selector request failed"}
+
+
+def test_selected_tool_is_revalidated_immediately_before_dispatch(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller)
+    assign(db_session, scope, selected, configured)
+
+    def revoke_during_selection(
+        request: str,
+        agent_scope: str,
+        candidates: tuple[ToolDefinition, ...],
+    ) -> ToolSelection:
+        del request, agent_scope, candidates
+        configured.status = ToolStatus.DISABLED
+        db_session.flush()
+        return ToolSelectionProposal("get_reimbursement_status", {})
+
+    tool_selector.select = revoke_during_selection  # type: ignore[method-assign]
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Check my reimbursement"},
+    )
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Tool is no longer active or assigned"}
+
+
+def test_registry_risk_mismatch_fails_closed_before_selection(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller)
+    configured.risk_level = ToolRisk.HIGH
+    assign(db_session, scope, selected, configured)
+
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Check my reimbursement"},
+    )
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Tool configuration is unavailable"}
+    assert tool_selector.calls == []
+
+
+@pytest.mark.parametrize("revoked_resource", ["membership", "workspace", "user"])
+def test_caller_authorization_is_revalidated_after_selection_before_read_dispatch(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+    monkeypatch: pytest.MonkeyPatch,
+    revoked_resource: str,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    active_membership = membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller)
+    assign(db_session, scope, selected, configured)
+    selector_calls: list[str] = []
+    adapter_calls: list[object] = []
+
+    def revoke_during_selection(
+        request: str,
+        agent_scope: str,
+        candidates: tuple[ToolDefinition, ...],
+    ) -> ToolSelection:
+        del agent_scope, candidates
+        selector_calls.append(request)
+        if revoked_resource == "membership":
+            active_membership.status = MembershipStatus.DISABLED
+        elif revoked_resource == "workspace":
+            scope.status = WorkspaceStatus.DISABLED
+        else:
+            caller.status = UserStatus.DISABLED
+        db_session.flush()
+        return ToolSelectionProposal("get_reimbursement_status", {})
+
+    def forbidden_adapter(*args: object) -> None:
+        adapter_calls.extend(args)
+        pytest.fail("adapter executed after caller authorization was revoked")
+
+    tool_selector.select = revoke_during_selection  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "app.services.tool_execution.get_reimbursement_status", forbidden_adapter
+    )
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Check my reimbursement"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Not authorized for this workspace"}
+    assert selector_calls == ["Check my reimbursement"]
+    assert adapter_calls == []
+    assert selected.status is AgentStatus.ACTIVE
+    assert configured.status is ToolStatus.ACTIVE
+    assert db_session.get(AgentTool, (selected.id, configured.id)) is not None
+
+
+def test_authorization_revocation_blocks_approval_required_arguments(
+    client: TestClient,
+    db_session: Session,
+    auth_settings: Settings,
+    tool_selector: FakeToolSelector,
+) -> None:
+    caller = user(db_session)
+    scope = workspace(db_session)
+    active_membership = membership(db_session, caller, scope)
+    selected = agent(db_session, scope, caller)
+    configured = tool(db_session, scope, caller, tool_key="create_it_access_request")
+    assign(db_session, scope, selected, configured)
+    arguments = {
+        "system": "production_database",
+        "access_level": "read_only",
+        "business_justification": "Investigate approved production incidents.",
+        "duration_days": 14,
+    }
+
+    def revoke_during_selection(
+        request: str,
+        agent_scope: str,
+        candidates: tuple[ToolDefinition, ...],
+    ) -> ToolSelection:
+        del request, agent_scope, candidates
+        active_membership.status = MembershipStatus.DISABLED
+        db_session.flush()
+        return ToolSelectionProposal("create_it_access_request", arguments)
+
+    tool_selector.select = revoke_during_selection  # type: ignore[method-assign]
+    response = client.post(
+        route(scope, selected), headers=bearer(caller, auth_settings),
+        json={"request": "Request temporary production access"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Not authorized for this workspace"}
+    assert "validated_arguments" not in response.text
+    assert selected.status is AgentStatus.ACTIVE
+    assert configured.status is ToolStatus.ACTIVE
+    assert db_session.get(AgentTool, (selected.id, configured.id)) is not None

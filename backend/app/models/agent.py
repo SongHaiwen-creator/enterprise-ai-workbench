@@ -1,7 +1,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func, text
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PostgreSQLUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,6 +25,7 @@ class Agent(Base):
         CheckConstraint("status IN ('draft', 'active', 'disabled')", name="status_values"),
         CheckConstraint("name ~ '[^[:space:]]'", name="name_not_empty"),
         CheckConstraint("system_prompt ~ '[^[:space:]]'", name="system_prompt_not_empty"),
+        UniqueConstraint("id", "workspace_id", name="uq_agents_id_workspace_id"),
         Index("ix_agents_workspace_id", "workspace_id"),
         Index("ix_agents_created_by", "created_by"),
     )

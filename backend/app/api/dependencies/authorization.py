@@ -7,9 +7,12 @@ from sqlalchemy import select
 from app.api.dependencies.auth import CurrentUser, DatabaseSession
 from app.models import Membership, Workspace
 from app.models.enums import MembershipRole, MembershipStatus, WorkspaceStatus
-from app.services.exceptions import ForbiddenError, NotFoundError
+from app.services.exceptions import (
+    WORKSPACE_ACCESS_DENIED,
+    ForbiddenError,
+    NotFoundError,
+)
 
-WORKSPACE_ACCESS_DENIED = "Not authorized for this workspace"
 SYSTEM_ADMIN_REQUIRED = "System administrator role required"
 KNOWLEDGE_ADMIN_REQUIRED = "Knowledge administrator role required"
 AGENT_ADMIN_REQUIRED = "Agent administrator role required"

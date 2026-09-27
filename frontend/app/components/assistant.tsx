@@ -78,6 +78,10 @@ export function Assistant({
       ? result.response.outcome
       : null;
   const selectedCitation = answeredOutcome?.citations[selectedCitationIndex] ?? null;
+  const toolOutcome =
+    result.kind === "routed" && result.response.intent === "tool_request"
+      ? result.response.outcome
+      : null;
 
   function resetResult() {
     setValidationMessage(null);
@@ -330,13 +334,60 @@ export function Assistant({
               </div>
             ))}
 
-          {result.kind === "routed" && result.response.intent === "tool_request" && (
+          {toolOutcome?.status === "not_executed" && (
             <div className="answer-state assistant-tool-state" role="status">
               <span className="state-icon" aria-hidden="true">↗</span>
               <p className="section-kicker">Enterprise tool required</p>
               <h2>No action was executed</h2>
-              <p>{result.response.outcome.message}</p>
+              <p>{toolOutcome.message}</p>
             </div>
+          )}
+
+          {toolOutcome?.status === "executed" && (
+            <article className="answer-content assistant-tool-result" role="status">
+              <div className="answer-meta">
+                <span className="answer-status"><span aria-hidden="true">✓</span> Executed</span>
+                <span>Read-only enterprise result</span>
+              </div>
+              <p className="section-kicker">{toolOutcome.tool.name}</p>
+              <h2>Capability completed successfully</h2>
+              {toolOutcome.result.type === "reimbursement_status" ? (
+                <dl className="tool-result-grid">
+                  <div><dt>Reference</dt><dd>{toolOutcome.result.reimbursement_reference}</dd></div>
+                  <div><dt>Status</dt><dd>{toolOutcome.result.status.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Amount</dt><dd>{(toolOutcome.result.amount_minor / 100).toFixed(2)} {toolOutcome.result.currency}</dd></div>
+                  <div><dt>Submitted</dt><dd>{toolOutcome.result.submitted_on}</dd></div>
+                  <div><dt>Last updated</dt><dd>{toolOutcome.result.last_updated_on}</dd></div>
+                </dl>
+              ) : (
+                <dl className="tool-result-grid">
+                  <div><dt>Name</dt><dd>{toolOutcome.result.name}</dd></div>
+                  <div><dt>Email</dt><dd>{toolOutcome.result.email}</dd></div>
+                  <div><dt>Department</dt><dd>{toolOutcome.result.department}</dd></div>
+                  <div><dt>Job title</dt><dd>{toolOutcome.result.job_title}</dd></div>
+                  <div><dt>Employment status</dt><dd>{toolOutcome.result.employment_status}</dd></div>
+                </dl>
+              )}
+              <p className="tool-result-message">{toolOutcome.message}</p>
+            </article>
+          )}
+
+          {toolOutcome?.status === "approval_required" && (
+            <article className="answer-content assistant-approval-result" role="status">
+              <div className="answer-meta">
+                <span className="approval-status">Approval required — not executed</span>
+                <span>Sensitive enterprise action</span>
+              </div>
+              <p className="section-kicker">{toolOutcome.tool.name}</p>
+              <h2>This request needs human approval</h2>
+              <dl className="tool-result-grid">
+                <div><dt>System</dt><dd>{toolOutcome.validated_arguments.system.replaceAll("_", " ")}</dd></div>
+                <div><dt>Access level</dt><dd>{toolOutcome.validated_arguments.access_level.replaceAll("_", " ")}</dd></div>
+                <div><dt>Duration</dt><dd>{toolOutcome.validated_arguments.duration_days} days</dd></div>
+                <div className="tool-result-wide"><dt>Business justification</dt><dd>{toolOutcome.validated_arguments.business_justification}</dd></div>
+              </dl>
+              <p className="tool-result-message">{toolOutcome.message}</p>
+            </article>
           )}
 
           {result.kind === "routed" && result.response.intent === "unsupported" && (

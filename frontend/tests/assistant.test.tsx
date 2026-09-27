@@ -132,8 +132,13 @@ const toolResponse: AgentRouteResponse = {
   intent: "tool_request",
   outcome: {
     status: "not_executed",
-    required_capability: "enterprise_tool",
-    message: "This request requires an enterprise tool. No action was executed.",
+    tool: null,
+    executed: false,
+    approval_required: false,
+    reason: "no_available_tool",
+    validated_arguments: null,
+    result: null,
+    message: "No permitted enterprise capability can safely handle this request.",
   },
 };
 
@@ -202,6 +207,97 @@ describe("Assistant", () => {
       "workspace-1", "agent-1", toolResponse.request, null, "test-token",
     );
     expect(screen.queryByRole("button", { name: /travel-policy\.md/i })).not.toBeInTheDocument();
+  });
+
+  it("renders a typed reimbursement result without arbitrary JSON", async () => {
+    mockedRoute.mockResolvedValue({
+      request: "Check my reimbursement",
+      intent: "tool_request",
+      outcome: {
+        status: "executed",
+        tool: { tool_key: "get_reimbursement_status", name: "Reimbursement status" },
+        executed: true,
+        approval_required: false,
+        validated_arguments: {},
+        result: {
+          type: "reimbursement_status",
+          reimbursement_reference: "REIM-2F40A831",
+          status: "under_review",
+          amount_minor: 12800,
+          currency: "CNY",
+          submitted_on: "2026-09-15",
+          last_updated_on: "2026-09-18",
+        },
+        message: "The read-only enterprise capability completed successfully.",
+      },
+    });
+    renderAssistant({ knowledgeBases: [] });
+    await submitRequest("Check my reimbursement");
+
+    expect(await screen.findByText("Capability completed successfully")).toBeInTheDocument();
+    expect(screen.getByText("REIM-2F40A831")).toBeInTheDocument();
+    expect(screen.getByText("128.00 CNY")).toBeInTheDocument();
+    expect(screen.getByText("under review")).toBeInTheDocument();
+    expect(screen.queryByText(/tool_key/i)).not.toBeInTheDocument();
+  });
+
+  it("renders only the typed signed-in employee profile fields", async () => {
+    mockedRoute.mockResolvedValue({
+      request: "Show my profile",
+      intent: "tool_request",
+      outcome: {
+        status: "executed",
+        tool: { tool_key: "get_employee_information", name: "Employee information" },
+        executed: true,
+        approval_required: false,
+        validated_arguments: { subject: "self" },
+        result: {
+          type: "employee_information",
+          name: "Agent User",
+          email: "agent.user@example.com",
+          department: "Technology",
+          job_title: "Software Engineer",
+          employment_status: "active",
+        },
+        message: "The read-only enterprise capability completed successfully.",
+      },
+    });
+    renderAssistant();
+    await submitRequest("Show my profile");
+
+    expect(await screen.findByText("agent.user@example.com")).toBeInTheDocument();
+    expect(screen.getByText("Technology")).toBeInTheDocument();
+    expect(screen.getByText("Software Engineer")).toBeInTheDocument();
+  });
+
+  it("shows validated IT fields and no approval controls or identifier", async () => {
+    mockedRoute.mockResolvedValue({
+      request: "Request production access",
+      intent: "tool_request",
+      outcome: {
+        status: "approval_required",
+        tool: { tool_key: "create_it_access_request", name: "Create IT access request" },
+        executed: false,
+        approval_required: true,
+        validated_arguments: {
+          system: "production_database",
+          access_level: "read_only",
+          business_justification: "Investigate approved production incidents.",
+          duration_days: 14,
+        },
+        result: null,
+        message: "This request requires human approval and was not executed.",
+      },
+    });
+    renderAssistant();
+    await submitRequest("Request production access");
+
+    expect(await screen.findByText("Approval required — not executed")).toBeInTheDocument();
+    expect(screen.getByText("production database")).toBeInTheDocument();
+    expect(screen.getByText("14 days")).toBeInTheDocument();
+    expect(screen.getByText("Investigate approved production incidents.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve|reject/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/approval id/i)).not.toBeInTheDocument();
   });
 
   it("routes unsupported requests even when knowledge bases cannot be loaded", async () => {
