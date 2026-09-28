@@ -1,14 +1,19 @@
+import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import Engine, inspect, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
+import app.models  # noqa: F401
 from alembic import command
+from app.db.base import Base
 
 pytestmark = pytest.mark.integration
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -136,7 +141,7 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     with postgres_engine.connect() as connection:
         migration_context = MigrationContext.configure(connection)
-        assert migration_context.get_current_revision() == "0008"
+        assert migration_context.get_current_revision() == "0009"
 
 
 def test_knowledge_base_migration_upgrades_and_downgrades(
@@ -607,6 +612,160 @@ def test_tool_migration_upgrades_downgrades_and_reupgrades(
             assert "agent_tools" not in inspector.get_table_names()
             command.upgrade(alembic_config, "0008")
             assert {"tools", "agent_tools"} <= set(inspect(connection).get_table_names())
+        finally:
+            connection.rollback()
+            command.upgrade(alembic_config, "head")
+
+
+APPLIED_MIGRATION_SHA256 = {
+    "0001_create_users_workspaces_memberships.py": (
+        "fd5755ad005a2960264c3a8682b47f82a3d448e4bf074028b7967c81de6fe99b"
+    ),
+    "0002_add_password_hash_to_users.py": (
+        "5fa9e1f26f27b43908785e7694f778a637ff0fc82486f2984322b60aa1db4c9a"
+    ),
+    "0003_create_knowledge_bases.py": (
+        "9c029bac0f9f209402e8fd6cdc3c3fe29280052953d88f3b70989978c0fb8512"
+    ),
+    "0004_create_documents.py": (
+        "eccee423e3922bf979b543496802bab693e18f5cf41e95b12bfed785d90ab296"
+    ),
+    "0005_create_chunks.py": (
+        "86cc33b63649f9f078d957c2711fdb1af7893826f4da83a63159b213a102b9e2"
+    ),
+    "0006_enforce_document_workspace_ownership.py": (
+        "869406fdfb066c4416140fb91aa9617588638f19d8df0d415ac5960be87b8116"
+    ),
+    "0007_create_agents.py": (
+        "bf72b01d6bfd2757120506b277928b6496884d90c382f89416fef1a6632df5ae"
+    ),
+    "0008_create_tools_and_agent_tools.py": (
+        "66f75aa0fda1ccaf63f19197ffafad3e4fbb383823ab29d564135a92b4e83cba"
+    ),
+}
+
+
+def test_applied_migrations_are_unchanged_and_head_is_single() -> None:
+    versions = BACKEND_ROOT / "alembic" / "versions"
+    for name, expected in APPLIED_MIGRATION_SHA256.items():
+        content = (versions / name).read_bytes().replace(b"\r\n", b"\n")
+        assert hashlib.sha256(content).hexdigest() == expected, name
+    script = ScriptDirectory.from_config(Config(str(BACKEND_ROOT / "alembic.ini")))
+    assert script.get_heads() == ["0009"]
+    assert script.get_revision("0009").down_revision == "0008"
+
+
+def test_models_match_migrated_schema_without_drift(postgres_engine: Engine) -> None:
+    with postgres_engine.connect() as connection:
+        context = MigrationContext.configure(connection, opts={"compare_type": True})
+        assert compare_metadata(context, Base.metadata) == []
+
+
+def test_approval_migration_upgrades_downgrades_and_reupgrades(
+    postgres_engine: Engine,
+) -> None:
+    alembic_config = Config(str(BACKEND_ROOT / "alembic.ini"))
+
+    with postgres_engine.connect() as connection:
+        alembic_config.attributes["connection"] = connection
+        try:
+            command.downgrade(alembic_config, "0008")
+            inspector = inspect(connection)
+            assert "approvals" not in inspector.get_table_names()
+            assert "mock_it_access_requests" not in inspector.get_table_names()
+            assert {"tools", "agent_tools", "memberships"} <= set(inspector.get_table_names())
+
+            command.upgrade(alembic_config, "0009")
+            inspector = inspect(connection)
+            columns = {column["name"]: column for column in inspector.get_columns("approvals")}
+            assert set(columns) == {
+                "id", "workspace_id", "requester_id", "agent_id", "tool_id", "action_type",
+                "canonical_arguments", "canonical_arguments_sha256", "capability_snapshot",
+                "policy_snapshot", "snapshot_sha256", "decision_status", "decided_by",
+                "decided_at", "decision_note", "invalidation_reason",
+                "invalidation_triggered_by", "execution_status", "executed_at",
+                "execution_failure_category", "expires_at", "created_at", "updated_at",
+            }
+            nullable = {name for name, column in columns.items() if column["nullable"]}
+            assert nullable == {
+                "decided_by", "decided_at", "decision_note", "invalidation_reason",
+                "invalidation_triggered_by", "executed_at", "execution_failure_category",
+            }
+            assert "pending" in columns["decision_status"]["default"]
+            assert "not_started" in columns["execution_status"]["default"]
+            assert columns["created_at"]["default"] == "CURRENT_TIMESTAMP"
+            assert str(columns["canonical_arguments_sha256"]["type"]) == "CHAR(64)"
+            assert str(columns["canonical_arguments"]["type"]) == "JSONB"
+            assert columns["expires_at"]["type"].timezone is True
+
+            foreign_keys = {
+                tuple(item["constrained_columns"]): (
+                    item["referred_table"],
+                    tuple(item["referred_columns"]),
+                    item["options"].get("ondelete"),
+                )
+                for item in inspector.get_foreign_keys("approvals")
+            }
+            assert foreign_keys == {
+                ("workspace_id",): ("workspaces", ("id",), "RESTRICT"),
+                ("requester_id", "workspace_id"): (
+                    "memberships", ("user_id", "workspace_id"), "RESTRICT"
+                ),
+                ("decided_by", "workspace_id"): (
+                    "memberships", ("user_id", "workspace_id"), "RESTRICT"
+                ),
+                ("invalidation_triggered_by", "workspace_id"): (
+                    "memberships", ("user_id", "workspace_id"), "RESTRICT"
+                ),
+                ("agent_id", "workspace_id"): ("agents", ("id", "workspace_id"), "RESTRICT"),
+                ("tool_id", "workspace_id"): ("tools", ("id", "workspace_id"), "RESTRICT"),
+            }
+            indexes = {index["name"]: index for index in inspector.get_indexes("approvals")}
+            assert set(indexes) >= {
+                "uq_approvals_pending_dedupe", "ix_approvals_ws_decision_created",
+                "ix_approvals_ws_requester_created", "ix_approvals_agent_id",
+                "ix_approvals_tool_id", "ix_approvals_decided_by",
+            }
+            dedupe = indexes["uq_approvals_pending_dedupe"]
+            assert dedupe["unique"] is True
+            assert dedupe["column_names"] == ["workspace_id", "requester_id", "snapshot_sha256"]
+            assert "pending" in dedupe["dialect_options"]["postgresql_where"]
+            assert {
+                item["name"] for item in inspector.get_unique_constraints("approvals")
+            } == {"uq_approvals_id_workspace_id"}
+            checks = {item["name"] for item in inspector.get_check_constraints("approvals")}
+            assert {
+                "ck_approvals_status_pair_legal", "ck_approvals_no_self_decision",
+                "ck_approvals_cancel_by_requester", "ck_approvals_decision_note_decided_only",
+                "ck_approvals_expired_decided_at", "ck_approvals_invalidation_not_requester",
+            } <= checks
+            assert len(checks) == 24
+
+            mock_foreign_keys = {
+                tuple(item["constrained_columns"]): item["referred_table"]
+                for item in inspector.get_foreign_keys("mock_it_access_requests")
+            }
+            assert mock_foreign_keys == {
+                ("workspace_id",): "workspaces",
+                ("approval_id", "workspace_id"): "approvals",
+                ("requester_id", "workspace_id"): "memberships",
+            }
+            assert {
+                item["name"]
+                for item in inspector.get_unique_constraints("mock_it_access_requests")
+            } == {
+                "uq_mock_it_access_requests_approval_id",
+                "uq_mock_it_access_requests_reference",
+            }
+
+            command.downgrade(alembic_config, "0008")
+            inspector = inspect(connection)
+            assert "approvals" not in inspector.get_table_names()
+            assert "mock_it_access_requests" not in inspector.get_table_names()
+            command.upgrade(alembic_config, "0009")
+            assert {"approvals", "mock_it_access_requests"} <= set(
+                inspect(connection).get_table_names()
+            )
         finally:
             connection.rollback()
             command.upgrade(alembic_config, "head")

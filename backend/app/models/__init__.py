@@ -1,5 +1,6 @@
 from app.models.agent import Agent
 from app.models.agent_tool import AgentTool
+from app.models.approval import Approval, MockITAccessRequest
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.models.knowledge_base import KnowledgeBase
@@ -9,6 +10,6 @@ from app.models.user import User
 from app.models.workspace import Workspace
 
 __all__ = [
-    "Agent", "AgentTool", "Chunk", "Document", "KnowledgeBase", "Membership",
-    "Tool", "User", "Workspace",
+    "Agent", "AgentTool", "Approval", "Chunk", "Document", "KnowledgeBase",
+    "Membership", "MockITAccessRequest", "Tool", "User", "Workspace",
 ]
