@@ -149,21 +149,33 @@ Tool execution is controlled by the backend.
 
 ## 8. Approval Layer
 
-Sensitive actions require human confirmation or approval.
+Sensitive actions require human approval before execution (Feature 013).
 
-Example:
-
+```text
 Request production database access
 ↓
-Agent collects required information
+Agent routing and Tool selection (Features 011-012)
 ↓
-Create approval request
+Creation authorization → pending Approval + immutable execution snapshot
 ↓
-Authorized administrator reviews
+Authorized reviewer (same-Workspace system_admin, never the requester)
 ↓
-Backend executes tool
+Decision authorization → reject | approve
 ↓
-Create audit log
+Execution authorization + drift check (before approved is committed)
+  fails → Approval invalidated, 409, nothing executes
+  passes → approved + one local Mock write in the same transaction
+↓
+Durable decision fact and separate execution fact
+```
+
+The backend owns Approval state, policy, and authorization. Execution input is
+read only from the server-held snapshot; client-supplied arguments are never
+trusted. Creation, decision, and execution are separately authorized from
+current Membership, Agent, Tool, and assignment state, and competing
+decisions are serialized by an Approval row lock. The only write executor is
+a statically registered local Mock adapter; there is no generic HTTP executor.
+Generic execution logs belong to the Logs & Evaluation milestone.
 
 ---
 

@@ -1,6 +1,6 @@
 # Feature 013 - Human Approval
 
-Status: Proposed - Phase A specification (revision 3, human decisions H1-H3 applied; Phase A code-review corrections applied) awaiting human approval; not implemented
+Status: Implemented in Phase B (pending independent review and human merge); Phase A specification (revision 3, H1-H3) approved
 Milestone: 3
 Baseline: `main` at `f57cb8e` (Features 001-012 merged; Alembic head `0008`)
 Risk class: High (`AGENTS.md` Review Policy: authorization, tenant isolation,
@@ -1278,10 +1278,13 @@ are in Sections 7, 15, and 17.
 - **Approve sequence in one transaction.** Lock Approval -> decision
   authorization -> lazy expiry -> execution authorization (a separate,
   independently tested function). On failure: update to `invalidated` with
-  reason, commit, raise `409`. On success: update to `approved`, open a
-  savepoint, call the adapter; on adapter error roll back to the savepoint and
-  set `failed/adapter_error`, commit, raise `502`; on success set
-  `succeeded`, commit, return `200`.
+  reason, commit, raise `409`. On success: open a savepoint and call the
+  adapter (Mock row insert and result validation); on adapter error roll back
+  to the savepoint. Then one conditional `UPDATE` records `approved` together
+  with `succeeded` or `failed/adapter_error`, because the legal-pair CHECK
+  forbids an intermediate `approved/not_started` row. Commit, then return
+  `200` or raise `502`. Nothing is visible to other transactions before the
+  commit, so this ordering is equivalent to "approve, then execute".
 - **Creation dedupe.** Lazily expire a matching past-expiry pending row, then
   `INSERT ... ON CONFLICT DO NOTHING` on the partial index and re-select on
   conflict.
