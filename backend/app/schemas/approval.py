@@ -1,3 +1,4 @@
+import unicodedata
 from datetime import datetime
 from typing import Literal, Self
 from uuid import UUID
@@ -36,11 +37,14 @@ class ApprovalDecisionRequest(BaseModel):
     def normalize_note(cls, value: object) -> object:
         if value is None or not isinstance(value, str):
             return value
+        # Reject C0/C1 controls (Cc), format characters such as bidi overrides
+        # and zero-width marks (Cf), and surrogates (Cs); keep newline and tab.
         if any(
-            (ord(character) < 32 and character not in "\n\t") or ord(character) == 127
+            unicodedata.category(character) in {"Cc", "Cf", "Cs"}
+            and character not in "\n\t"
             for character in value
         ):
-            raise ValueError("Control characters are not allowed")
+            raise ValueError("Control and format characters are not allowed")
         value = value.strip()
         if not 1 <= len(value) <= 1000:
             raise ValueError("Note must contain 1 to 1000 characters")

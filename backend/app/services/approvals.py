@@ -6,6 +6,7 @@ Fresh checks select columns, not ORM entities, so values cached in the
 session identity map by earlier request dependencies are never trusted.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal
@@ -129,7 +130,9 @@ def _shared(statement: Select[Any], lock: bool) -> Select[Any]:
 
 
 def _db_now(session: Session) -> datetime:
-    return session.scalar(select(func.now()))
+    """Current database wall-clock time, not the transaction start (``now()``)."""
+
+    return session.scalar(select(func.clock_timestamp()))
 
 
 def _fresh_caller(session: Session, workspace_id: UUID, user_id: UUID) -> CallerAuthority:
@@ -266,18 +269,19 @@ def create_pending_approval(
         Approval.requester_id == requester_id,
         Approval.snapshot_sha256 == digest,
     )
+    created_at = _db_now(session)
     # A past-expiry pending duplicate is expired first so it never blocks.
     session.execute(
         update(Approval)
         .where(
             *identity,
             Approval.decision_status == ApprovalDecisionStatus.PENDING,
-            Approval.expires_at <= func.now(),
+            Approval.expires_at <= created_at,
         )
         .values(
             decision_status=ApprovalDecisionStatus.EXPIRED,
             decided_at=Approval.expires_at,
-            updated_at=func.now(),
+            updated_at=created_at,
         )
         .execution_options(synchronize_session=False)
     )
@@ -294,7 +298,9 @@ def create_pending_approval(
             capability_snapshot=capability_value,
             policy_snapshot=policy_value,
             snapshot_sha256=digest,
-            expires_at=func.now() + timedelta(hours=requirement.policy.ttl_hours),
+            created_at=created_at,
+            updated_at=created_at,
+            expires_at=created_at + timedelta(hours=requirement.policy.ttl_hours),
         )
         .on_conflict_do_nothing(
             index_elements=["workspace_id", "requester_id", "snapshot_sha256"],
@@ -432,14 +438,36 @@ def authorize_execution(
 
 
 # --- Decision boundary (Section 15.2) --------------------------------------
+#
+# Lock order (Section 26), shared by decide and cancel:
+#   1. Approval row            FOR UPDATE   (serializes decisions)
+#   2. route Workspace row     FOR SHARE
+#   3. User rows, by id        FOR SHARE    (caller and, for decisions, requester)
+#   4. Membership rows, by user_id FOR SHARE
+#   5. Agent, Tool, agent_tools FOR SHARE   (execution authorization only)
+# Authority is decided only from rows read after they are locked, so a
+# revocation committed while the request waited is always observed, and a
+# revocation attempted during the protected transaction waits for its commit.
+# Before any blocking lock, a non-locking precheck returns the uniform 404/403
+# so a caller who cannot see an Approval never waits on, or holds, its lock.
 
 
 def _is_lock_timeout(exc: OperationalError) -> bool:
     return getattr(exc.orig, "sqlstate", None) == LOCK_NOT_AVAILABLE
 
 
+def _read_approval(session: Session, workspace_id: UUID, approval_id: UUID) -> Approval:
+    approval = session.scalar(
+        select(Approval)
+        .where(Approval.id == approval_id, Approval.workspace_id == workspace_id)
+        .execution_options(populate_existing=True)
+    )
+    if approval is None:
+        raise NotFoundError(APPROVAL_NOT_FOUND)
+    return approval
+
+
 def _lock_approval(session: Session, workspace_id: UUID, approval_id: UUID) -> Approval:
-    session.execute(text(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'"))
     approval = session.scalar(
         select(Approval)
         .where(Approval.id == approval_id, Approval.workspace_id == workspace_id)
@@ -449,6 +477,48 @@ def _lock_approval(session: Session, workspace_id: UUID, approval_id: UUID) -> A
     if approval is None:
         raise NotFoundError(APPROVAL_NOT_FOUND)
     return approval
+
+
+def _lock_caller_authority(
+    session: Session,
+    workspace_id: UUID,
+    caller_id: UUID,
+    *related_user_ids: UUID,
+) -> CallerAuthority:
+    """Share-lock Workspace, Users, and Memberships in order; return caller authority."""
+
+    workspace_status = session.scalar(
+        select(WorkspaceModel.status)
+        .where(WorkspaceModel.id == workspace_id)
+        .with_for_update(read=True)
+    )
+    user_ids = {caller_id, *related_user_ids}
+    user_status = dict(
+        session.execute(
+            select(User.id, User.status)
+            .where(User.id.in_(user_ids))
+            .order_by(User.id)
+            .with_for_update(read=True)
+        ).all()
+    )
+    memberships = {
+        row.user_id: row
+        for row in session.execute(
+            select(Membership.user_id, Membership.id, Membership.role, Membership.status)
+            .where(Membership.workspace_id == workspace_id, Membership.user_id.in_(user_ids))
+            .order_by(Membership.user_id)
+            .with_for_update(read=True)
+        )
+    }
+    membership = memberships.get(caller_id)
+    if (
+        workspace_status is not WorkspaceStatus.ACTIVE
+        or user_status.get(caller_id) is not UserStatus.ACTIVE
+        or membership is None
+        or membership.status is not MembershipStatus.ACTIVE
+    ):
+        raise ForbiddenError(WORKSPACE_ACCESS_DENIED)
+    return CallerAuthority(membership_id=membership.id, role=membership.role)
 
 
 def _current_reviewer_roles(approval: Approval) -> frozenset[MembershipRole]:
@@ -480,6 +550,20 @@ def _may_decide(approval: Approval, user_id: UUID, role: MembershipRole) -> bool
     )
 
 
+def _require_decider(approval: Approval, user_id: UUID, role: MembershipRole) -> None:
+    if not _is_visible(approval, user_id, role):
+        raise NotFoundError(APPROVAL_NOT_FOUND)
+    if not _may_decide(approval, user_id, role):
+        raise ForbiddenError(APPROVAL_ACTION_NOT_PERMITTED)
+
+
+def _require_canceller(approval: Approval, user_id: UUID, role: MembershipRole) -> None:
+    if not _is_visible(approval, user_id, role):
+        raise NotFoundError(APPROVAL_NOT_FOUND)
+    if approval.requester_id != user_id:
+        raise ForbiddenError(APPROVAL_ACTION_NOT_PERMITTED)
+
+
 def _transition(
     session: Session,
     approval: Approval,
@@ -492,16 +576,19 @@ def _transition(
             Approval.workspace_id == approval.workspace_id,
             Approval.decision_status == ApprovalDecisionStatus.PENDING,
         )
-        .values(updated_at=func.now(), **values)
+        .values(updated_at=func.clock_timestamp(), **values)
         .execution_options(synchronize_session=False)
     )
     if result.rowcount != 1:
         raise ConflictError(APPROVAL_NOT_PENDING)
 
 
-def _expire_if_due(session: Session, approval: Approval) -> None:
-    if _db_now(session) < approval.expires_at:
-        return
+def _decision_time(session: Session, approval: Approval) -> datetime:
+    """Wall-clock time read after the lock; expires the Approval when due."""
+
+    decided_at = _db_now(session)
+    if decided_at < approval.expires_at:
+        return decided_at
     _transition(
         session,
         approval,
@@ -512,7 +599,8 @@ def _expire_if_due(session: Session, approval: Approval) -> None:
     raise ConflictError(APPROVAL_EXPIRED)
 
 
-def _run_locked(session: Session, operation: Any) -> None:
+def _run_locked(session: Session, operation: Callable[[], None]) -> None:
+    session.execute(text(f"SET LOCAL lock_timeout = '{LOCK_TIMEOUT}'"))
     try:
         operation()
     except OperationalError as exc:
@@ -534,12 +622,17 @@ def decide_approval(
     """Approve or reject; commits every state change before any error."""
 
     def operation() -> None:
-        caller = _fresh_caller(session, workspace_id, user_id)
+        # Non-locking precheck: invisible callers get the uniform 404 here.
+        precheck = _fresh_caller(session, workspace_id, user_id)
+        _require_decider(
+            _read_approval(session, workspace_id, approval_id), user_id, precheck.role
+        )
+
         approval = _lock_approval(session, workspace_id, approval_id)
-        if not _is_visible(approval, user_id, caller.role):
-            raise NotFoundError(APPROVAL_NOT_FOUND)
-        if not _may_decide(approval, user_id, caller.role):
-            raise ForbiddenError(APPROVAL_ACTION_NOT_PERMITTED)
+        caller = _lock_caller_authority(
+            session, workspace_id, user_id, approval.requester_id
+        )
+        _require_decider(approval, user_id, caller.role)
 
         if approval.decision_status is not ApprovalDecisionStatus.PENDING:
             replay = approval.decided_by == user_id and (
@@ -552,7 +645,7 @@ def decide_approval(
                 session.commit()
                 return
             raise ConflictError(APPROVAL_NOT_PENDING)
-        _expire_if_due(session, approval)
+        decided_at = _decision_time(session, approval)
 
         if decision == "reject":
             _transition(
@@ -560,13 +653,20 @@ def decide_approval(
                 approval,
                 decision_status=ApprovalDecisionStatus.REJECTED,
                 decided_by=user_id,
-                decided_at=func.now(),
+                decided_at=decided_at,
                 decision_note=note,
             )
             session.commit()
             return
 
-        _approve(session, approval, workspace_id=workspace_id, reviewer_id=user_id, note=note)
+        _approve(
+            session,
+            approval,
+            workspace_id=workspace_id,
+            reviewer_id=user_id,
+            note=note,
+            decided_at=decided_at,
+        )
 
     _run_locked(session, operation)
 
@@ -578,6 +678,7 @@ def _approve(
     workspace_id: UUID,
     reviewer_id: UUID,
     note: str | None,
+    decided_at: datetime,
 ) -> None:
     authorization = authorize_execution(session, approval, workspace_id=workspace_id)
     if not authorization.authorized:
@@ -586,7 +687,7 @@ def _approve(
             session,
             approval,
             decision_status=ApprovalDecisionStatus.INVALIDATED,
-            decided_at=func.now(),
+            decided_at=decided_at,
             invalidation_reason=authorization.reason,
             invalidation_triggered_by=reviewer_id,
         )
@@ -625,12 +726,12 @@ def _approve(
         approval,
         decision_status=ApprovalDecisionStatus.APPROVED,
         decided_by=reviewer_id,
-        decided_at=func.now(),
+        decided_at=decided_at,
         decision_note=note,
         execution_status=(
             ApprovalExecutionStatus.SUCCEEDED if succeeded else ApprovalExecutionStatus.FAILED
         ),
-        executed_at=func.now(),
+        executed_at=func.clock_timestamp(),
         execution_failure_category=(
             None if succeeded else ApprovalExecutionFailure.ADAPTER_ERROR
         ),
@@ -650,24 +751,26 @@ def cancel_approval(
     user_id: UUID,
 ) -> None:
     def operation() -> None:
-        caller = _fresh_caller(session, workspace_id, user_id)
+        precheck = _fresh_caller(session, workspace_id, user_id)
+        _require_canceller(
+            _read_approval(session, workspace_id, approval_id), user_id, precheck.role
+        )
+
         approval = _lock_approval(session, workspace_id, approval_id)
-        if not _is_visible(approval, user_id, caller.role):
-            raise NotFoundError(APPROVAL_NOT_FOUND)
-        if approval.requester_id != user_id:
-            raise ForbiddenError(APPROVAL_ACTION_NOT_PERMITTED)
+        caller = _lock_caller_authority(session, workspace_id, user_id)
+        _require_canceller(approval, user_id, caller.role)
         if approval.decision_status is not ApprovalDecisionStatus.PENDING:
             if approval.decision_status is ApprovalDecisionStatus.CANCELLED:
                 session.commit()
                 return
             raise ConflictError(APPROVAL_NOT_PENDING)
-        _expire_if_due(session, approval)
+        decided_at = _decision_time(session, approval)
         _transition(
             session,
             approval,
             decision_status=ApprovalDecisionStatus.CANCELLED,
             decided_by=user_id,
-            decided_at=func.now(),
+            decided_at=decided_at,
         )
         session.commit()
 
@@ -814,11 +917,11 @@ def read_approval(
 def _effective_status_filter(status: ApprovalDecisionStatus) -> ColumnElement[bool]:
     pending = Approval.decision_status == ApprovalDecisionStatus.PENDING
     if status is ApprovalDecisionStatus.PENDING:
-        return and_(pending, Approval.expires_at > func.now())
+        return and_(pending, Approval.expires_at > func.clock_timestamp())
     if status is ApprovalDecisionStatus.EXPIRED:
         return or_(
             Approval.decision_status == ApprovalDecisionStatus.EXPIRED,
-            and_(pending, Approval.expires_at <= func.now()),
+            and_(pending, Approval.expires_at <= func.clock_timestamp()),
         )
     return Approval.decision_status == status
 

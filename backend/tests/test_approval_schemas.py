@@ -176,6 +176,32 @@ def test_decision_note_rules() -> None:
             ApprovalDecisionRequest.model_validate({"decision": decision})
 
 
+@pytest.mark.parametrize(
+    "character",
+    [
+        "\x85",  # C1 NEXT LINE
+        "\x9b",  # C1 CONTROL SEQUENCE INTRODUCER
+        "‮",  # RIGHT-TO-LEFT OVERRIDE
+        "⁦",  # LEFT-TO-RIGHT ISOLATE
+        "​",  # ZERO WIDTH SPACE
+        "‍",  # ZERO WIDTH JOINER
+        "﻿",  # ZERO WIDTH NO-BREAK SPACE
+        "­",  # SOFT HYPHEN
+        "\ud800",  # lone surrogate
+    ],
+)
+def test_decision_note_rejects_unicode_control_and_format_characters(character: str) -> None:
+    with pytest.raises(ValidationError):
+        ApprovalDecisionRequest(decision="approve", note=f"Approved {character}here")
+
+
+def test_decision_note_keeps_newline_tab_and_ordinary_unicode() -> None:
+    note = ApprovalDecisionRequest(
+        decision="approve", note="Approved – 季度\n\tcafé é"
+    ).note
+    assert note == "Approved – 季度\n\tcafé é"
+
+
 def test_cancel_body_accepts_only_empty_object() -> None:
     ApprovalCancelRequest.model_validate({})
     with pytest.raises(ValidationError):

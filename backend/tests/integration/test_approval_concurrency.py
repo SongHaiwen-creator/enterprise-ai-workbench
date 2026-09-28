@@ -5,6 +5,7 @@ session) and use unique Workspaces, so they never affect other tests.
 """
 
 import threading
+import time
 from collections.abc import Callable, Generator
 from typing import Any
 
@@ -24,7 +25,7 @@ from app.models.enums import (
 from app.schemas.tool_calling import CreateITAccessRequestArguments
 from app.services import approvals
 from app.services.approval_execution import execute_mock_it_access_request
-from app.services.exceptions import ConflictError
+from app.services.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.services.tool_registry import get_tool_definition
 from tests.integration.approval_support import (
     ARGUMENTS,
@@ -394,23 +395,250 @@ def test_fresh_checks_see_changes_committed_after_the_request_dependency(
             {"id": scenario.reviewer_membership.id},
         )
         admin.commit()
-    original_authorize = approvals.authorize_execution
+    original_lock = approvals._lock_approval
 
-    def disable_requester_then_authorize(session: Session, approval: Any, **kwargs: Any) -> Any:
+    def disable_requester_then_lock(session: Session, *args: Any) -> Any:
+        # After the dependency and the non-locking precheck, before the
+        # protected transaction takes its locks. Once the requester Membership
+        # is share-locked, this UPDATE would wait for the decision to commit.
         with factory() as admin:
+            admin.execute(text("SET LOCAL lock_timeout = '2s'"))
             admin.execute(
                 text("UPDATE memberships SET status = 'disabled' WHERE id = :id"),
                 {"id": scenario.requester_membership.id},
             )
             admin.commit()
-        return original_authorize(session, approval, **kwargs)
+        return original_lock(session, *args)
 
-    monkeypatch.setattr(
-        "app.services.approvals.authorize_execution", disable_requester_then_authorize
-    )
+    monkeypatch.setattr("app.services.approvals._lock_approval", disable_requester_then_lock)
     response = decide(client, scenario, demoted_id, settings)
 
     assert response.status_code == 409
     approval, _ = state(factory, demoted_id)
     assert approval.invalidation_reason is not None
     assert approval.invalidation_reason.value == "requester_ineligible"
+
+
+# --- Independent review remediation (M1, L1, L2) ----------------------------
+
+
+def wait_for_lock_waiter(factory: sessionmaker[Session], timeout: float = 10.0) -> None:
+    """Block until some backend in the test database is waiting on a row lock."""
+
+    deadline = time.monotonic() + timeout
+    with factory() as observer:
+        while time.monotonic() < deadline:
+            waiting = observer.scalar(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                    "AND wait_event_type = 'Lock'"
+                )
+            )
+            observer.rollback()
+            if waiting:
+                return
+            time.sleep(0.05)
+    pytest.fail("decision never waited on the Approval lock")
+
+
+def run_in_thread(operation: Callable[[], None]) -> tuple[threading.Thread, list[Any]]:
+    outcome: list[Any] = []
+
+    def runner() -> None:
+        try:
+            operation()
+            outcome.append(None)
+        except BaseException as exc:  # noqa: BLE001 - recorded for assertions
+            outcome.append(exc)
+
+    thread = threading.Thread(target=runner)
+    thread.start()
+    return thread, outcome
+
+
+REVIEWER_REVOCATIONS = {
+    "demoted": "UPDATE memberships SET role = 'employee' WHERE id = :membership",
+    "membership_disabled": "UPDATE memberships SET status = 'disabled' WHERE id = :membership",
+    "user_disabled": "UPDATE users SET status = 'disabled' WHERE id = :user",
+}
+
+
+@pytest.mark.parametrize("revocation", sorted(REVIEWER_REVOCATIONS))
+def test_reviewer_losing_authority_while_waiting_on_the_lock_cannot_approve(
+    factory: sessionmaker[Session],
+    scenario: Scenario,
+    revocation: str,
+) -> None:
+    approval_id = create(factory, scenario)
+    with factory() as holder:
+        holder.execute(
+            text("SELECT id FROM approvals WHERE id = :id FOR UPDATE"), {"id": approval_id}
+        )
+        thread, outcome = run_in_thread(
+            decision(factory, scenario, approval_id, scenario.reviewer.id)
+        )
+        wait_for_lock_waiter(factory)
+        with factory() as admin:
+            admin.execute(
+                text(REVIEWER_REVOCATIONS[revocation]),
+                {
+                    "membership": scenario.reviewer_membership.id,
+                    "user": scenario.reviewer.id,
+                },
+            )
+            admin.commit()
+        holder.rollback()
+    thread.join(timeout=30)
+
+    assert len(outcome) == 1
+    assert isinstance(outcome[0], ForbiddenError | NotFoundError)
+    approval, mock_count = state(factory, approval_id)
+    assert approval.decision_status is ApprovalDecisionStatus.PENDING
+    assert approval.decided_by is None
+    assert mock_count == 0
+
+
+@pytest.mark.parametrize("target", ["membership", "user"])
+def test_reviewer_authority_is_frozen_while_a_decision_executes(
+    factory: sessionmaker[Session],
+    scenario: Scenario,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    approval_id = create(factory, scenario)
+    inside = threading.Event()
+    release = threading.Event()
+
+    def pausing_executor(session: Session, context: Any, arguments: Any) -> Any:
+        inside.set()
+        assert release.wait(timeout=20)
+        return execute_mock_it_access_request(session, context, arguments)
+
+    monkeypatch.setattr(
+        "app.services.approvals.WRITE_EXECUTORS",
+        {"mock_it_access_request.v1": pausing_executor},
+    )
+    thread, outcome = run_in_thread(
+        decision(factory, scenario, approval_id, scenario.reviewer.id)
+    )
+    assert inside.wait(timeout=20)
+    revoke = (
+        text("UPDATE memberships SET role = 'employee' WHERE id = :id")
+        if target == "membership"
+        else text("UPDATE users SET status = 'disabled' WHERE id = :id")
+    )
+    subject = scenario.reviewer_membership.id if target == "membership" else scenario.reviewer.id
+    with factory() as admin:
+        admin.execute(text("SET LOCAL lock_timeout = '300ms'"))
+        with pytest.raises(OperationalError):
+            admin.execute(revoke, {"id": subject})
+        admin.rollback()
+    release.set()
+    thread.join(timeout=30)
+
+    assert outcome == [None]
+    approval, mock_count = state(factory, approval_id)
+    assert approval.decision_status is ApprovalDecisionStatus.APPROVED
+    assert approval.execution_status is ApprovalExecutionStatus.SUCCEEDED
+    assert mock_count == 1
+    with factory() as admin:
+        admin.execute(revoke, {"id": subject})
+        admin.commit()
+
+
+@pytest.mark.parametrize("action", ["approve", "cancel"])
+def test_invisible_member_gets_uniform_404_while_the_approval_is_locked(
+    factory: sessionmaker[Session],
+    scenario: Scenario,
+    action: str,
+) -> None:
+    approval_id = create(factory, scenario)
+    with factory() as session:
+        outsider = make_user(session, "Invisible Member")
+        make_membership(session, outsider, scenario.workspace, MembershipRole.AGENT_ADMIN)
+        session.commit()
+
+    with factory() as holder:
+        holder.execute(
+            text("SELECT id FROM approvals WHERE id = :id FOR UPDATE"), {"id": approval_id}
+        )
+        started = time.monotonic()
+        with pytest.raises(NotFoundError) as raised:
+            decision(factory, scenario, approval_id, outsider.id, action)()
+        elapsed = time.monotonic() - started
+        holder.rollback()
+
+    assert raised.value.detail == "Approval not found"
+    assert elapsed < 2
+    approval, _ = state(factory, approval_id)
+    assert approval.decision_status is ApprovalDecisionStatus.PENDING
+
+
+def test_invisible_caller_cannot_block_a_legitimate_reviewer(
+    factory: sessionmaker[Session],
+    scenario: Scenario,
+) -> None:
+    approval_id = create(factory, scenario)
+    with factory() as session:
+        outsider = make_user(session, "Invisible Member")
+        make_membership(session, outsider, scenario.workspace)
+        session.commit()
+
+    with factory() as intruder:
+        with pytest.raises(NotFoundError):
+            approvals.decide_approval(
+                intruder, workspace_id=scenario.workspace.id, approval_id=approval_id,
+                user_id=outsider.id, decision="approve", note=None,
+            )
+        # The intruder's transaction is still open while the reviewer decides.
+        started = time.monotonic()
+        decision(factory, scenario, approval_id, scenario.reviewer.id)()
+        elapsed = time.monotonic() - started
+        intruder.rollback()
+
+    assert elapsed < 2
+    approval, mock_count = state(factory, approval_id)
+    assert approval.decision_status is ApprovalDecisionStatus.APPROVED
+    assert mock_count == 1
+
+
+def test_decision_lock_obtained_after_expiry_cannot_approve(
+    factory: sessionmaker[Session],
+    scenario: Scenario,
+) -> None:
+    approval_id = create(factory, scenario)
+    with factory() as admin:
+        admin.execute(
+            text(
+                "UPDATE approvals SET created_at = clock_timestamp() - interval '72 hours', "
+                "expires_at = clock_timestamp() + interval '1500 milliseconds' "
+                "WHERE id = :id"
+            ),
+            {"id": approval_id},
+        )
+        admin.commit()
+
+    with factory() as holder:
+        holder.execute(
+            text("SELECT id FROM approvals WHERE id = :id FOR UPDATE"), {"id": approval_id}
+        )
+        # The decision transaction starts before expiry and then waits.
+        thread, outcome = run_in_thread(
+            decision(factory, scenario, approval_id, scenario.reviewer.id)
+        )
+        wait_for_lock_waiter(factory)
+        expires_at = state(factory, approval_id)[0].expires_at
+        with factory() as clock:
+            while clock.scalar(text("SELECT clock_timestamp()")) <= expires_at:
+                clock.rollback()
+                time.sleep(0.1)
+        holder.rollback()
+    thread.join(timeout=30)
+
+    assert len(outcome) == 1
+    assert isinstance(outcome[0], ConflictError)
+    assert outcome[0].detail == "Approval has expired"
+    approval, mock_count = state(factory, approval_id)
+    assert approval.decision_status is ApprovalDecisionStatus.EXPIRED
+    assert approval.decided_at == approval.expires_at
+    assert mock_count == 0

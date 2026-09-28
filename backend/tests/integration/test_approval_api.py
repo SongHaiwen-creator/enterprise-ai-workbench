@@ -1005,3 +1005,21 @@ def test_responses_never_disclose_internal_or_sensitive_fields(
             "capability_snapshot", "policy_snapshot", "executor_key",
         ):
             assert secret not in response.text
+
+
+@pytest.mark.parametrize("character", ["\x85", "\u202e", "\u200b"])
+def test_decision_note_with_unicode_control_or_format_character_is_422(
+    client: TestClient,
+    db_session: Session,
+    scenario: Scenario,
+    selector: FakeToolSelector,
+    settings: Settings,
+    character: str,
+) -> None:
+    approval_id = request_approval(client, scenario, selector, settings)
+
+    response = decide(client, scenario, approval_id, settings, note=f"ok{character}ok")
+
+    assert response.status_code == 422
+    assert load(db_session, approval_id).decision_status is ApprovalDecisionStatus.PENDING
+    assert mock_rows(db_session, approval_id) == []

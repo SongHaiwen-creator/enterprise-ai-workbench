@@ -81,6 +81,14 @@ Revision 3 applies the human decisions recorded in Section 32:
   Membership; Users are global identities, not Workspace-owned resources
   (Section 8.1).
 
+Phase B independent review remediation (M1, L1, L2, L3): reviewer authority
+is re-established under lock, a non-locking precheck preserves the uniform
+`404`, current time is wall-clock `clock_timestamp()`, and `decision_note`
+rejects Unicode control and format characters (Section 26). Follow-up, out of
+Feature 013 scope: Feature 012 `business_justification` still rejects only
+ASCII controls; tightening it changes argument validation and may require a
+`tool_definition_version` bump, so it is tracked separately.
+
 Phase A review corrections (checked against `main` at `f57cb8e`; no H1-H3
 decision changed):
 
@@ -890,7 +898,8 @@ an eligible reviewer; otherwise `404`.
 
 - `decision`: `approve` or `reject`.
 - `note`: optional; `null`/omitted means none; trimmed; 1-1,000 characters;
-  control characters other than newline and tab rejected.
+  Unicode control, format, and surrogate characters (categories `Cc`, `Cf`,
+  `Cs`) other than newline and tab rejected.
 - No other field is accepted.
 
 Responses:
@@ -1263,17 +1272,28 @@ Conclusion: no new runtime or frontend dependency.
 These notes describe the recommended Phase B mechanism. Business invariants
 are in Sections 7, 15, and 17.
 
-- **Approval row lock.** Every decision and cancel path loads the Approval
-  with `SELECT ... FOR UPDATE` filtered by ID and Workspace, then applies a
+- **Non-locking precheck.** Every decision and cancel path first re-reads the
+  caller's authority and the Approval without locks and returns the uniform
+  `404` (invisible) or `403` (visible, action not permitted). A caller who
+  cannot see an Approval therefore never waits on, or holds, its row lock
+  (AC-008).
+- **Approval row lock.** The path then loads the Approval with
+  `SELECT ... FOR UPDATE` filtered by ID and Workspace and applies a
   conditional `UPDATE ... WHERE decision_status = 'pending'`. This serializes
   competing decisions.
+- **Caller authority under lock.** After the Approval lock, the route
+  Workspace, the caller's (and, for decisions, the requester's) User rows, and
+  their Membership rows are read `FOR SHARE` in that order and the
+  visibility/permission checks are repeated from those rows. A revocation
+  committed while the request waited is observed; a revocation attempted
+  during the protected transaction waits for its commit.
 - **Capability row locks.** During the approve transaction, reading the
   requester Membership, Agent, Tool, and `agent_tools` edge with
   `FOR SHARE` is recommended: a concurrent disable or unassign then waits
   until the approve transaction commits, so execution authorization cannot be
-  invalidated between the check and the write. Lock order: Approval,
-  Workspace, Users (by id), Memberships (by user_id), Agent, Tool,
-  `agent_tools`. `SET LOCAL lock_timeout = '5s'` bounds waiting. No I/O
+  invalidated between the check and the write. Final lock order: Approval
+  (`FOR UPDATE`), Workspace, Users (by id), Memberships (by user_id), Agent,
+  Tool, `agent_tools` (all `FOR SHARE`). `SET LOCAL lock_timeout = '5s'` bounds waiting. No I/O
   happens under lock.
 - **Approve sequence in one transaction.** Lock Approval -> decision
   authorization -> lazy expiry -> execution authorization (a separate,
@@ -1288,8 +1308,15 @@ are in Sections 7, 15, and 17.
 - **Creation dedupe.** Lazily expire a matching past-expiry pending row, then
   `INSERT ... ON CONFLICT DO NOTHING` on the partial index and re-select on
   conflict.
-- **Lazy expiry.** Decision paths compare `expires_at` with `now()` under the
-  row lock; reads report effective `expired` without writing.
+- **Current time.** Expiry and audit timestamps use PostgreSQL wall-clock
+  `clock_timestamp()`, never `now()` (transaction start). Decision paths read
+  it after the Approval lock is held and compare it with `expires_at`, so a
+  request that began before expiry but obtained the lock after expiry expires
+  the Approval (`decided_at = expires_at`) instead of deciding it. The same
+  reading is the `decided_at` of the decision; `executed_at` is read when the
+  outcome is written. Creation sets `created_at` and
+  `expires_at = created_at + ttl` from one reading. Reads report effective
+  `expired` without writing.
 - **Registry constants.** Add `action_type`, `tool_definition_version`,
   `executor_key`, `executor_type`, and an `ApprovalPolicy` to the
   `create_it_access_request` definition; keep `immediate_execution = False`
