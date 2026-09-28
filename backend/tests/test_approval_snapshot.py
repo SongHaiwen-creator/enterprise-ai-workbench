@@ -1,4 +1,6 @@
+import ast
 import hashlib
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -150,6 +152,38 @@ def test_registry_keeps_write_tool_off_the_immediate_branch() -> None:
     assert dict(WRITE_EXECUTORS) == {
         "mock_it_access_request.v1": execute_mock_it_access_request
     }
+
+
+def test_write_executor_is_reachable_only_from_the_approval_service() -> None:
+    """The Mock write adapter must stay off every path except approved execution."""
+
+    app_root = Path(__file__).resolve().parents[1] / "app"
+    guarded = {"approval_execution", "WRITE_EXECUTORS", "execute_mock_it_access_request"}
+    allowed = {
+        app_root / "services" / "approval_execution.py",
+        app_root / "services" / "approvals.py",
+    }
+    offenders = []
+    for path in app_root.rglob("*.py"):
+        if path in allowed:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            names: set[str] = set()
+            if isinstance(node, ast.ImportFrom):
+                names = {node.module or "", *(alias.name for alias in node.names)}
+            elif isinstance(node, ast.Import):
+                names = {alias.name for alias in node.names}
+            elif isinstance(node, ast.Name | ast.Attribute):
+                names = {node.id if isinstance(node, ast.Name) else node.attr}
+            if any(name.split(".")[-1] in guarded for name in names):
+                offenders.append(str(path.relative_to(app_root)))
+    assert offenders == []
+
+    definition = get_tool_definition("create_it_access_request")
+    assert definition is not None
+    assert definition.immediate_execution is False
+    assert definition.adapter is None
 
 
 def test_mock_reference_is_deterministic() -> None:
