@@ -1,6 +1,6 @@
 # Feature 007 - Document Management API
 
-Status: Approved
+Status: Implemented - merged into main (PR #17)
 Milestone: 2
 
 ## 1. Goal

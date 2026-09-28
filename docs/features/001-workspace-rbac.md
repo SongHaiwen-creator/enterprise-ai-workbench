@@ -1,6 +1,6 @@
 # Feature 001 - Workspace & RBAC
 
-Status: Draft
+Status: Implemented - merged into main (PR #7)
 Milestone: 1
 
 ## 1. Goal

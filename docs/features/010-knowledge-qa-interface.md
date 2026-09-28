@@ -1,6 +1,6 @@
 # Feature 010 - Knowledge Q&A Interface
 
-Status: Implemented - pending review
+Status: Implemented - merged into main (PR #24)
 Milestone: 2
 
 ## 1. Goal
