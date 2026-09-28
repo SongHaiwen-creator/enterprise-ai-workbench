@@ -2,6 +2,7 @@
 
 import { FormEvent, useRef, useState } from "react";
 
+import { Approvals } from "@/app/components/approvals";
 import { Assistant } from "@/app/components/assistant";
 import type { AgentsLoadFailure } from "@/app/components/assistant";
 import { KnowledgeQA } from "@/app/components/knowledge-qa";
@@ -39,7 +40,7 @@ const ROLES: MembershipRole[] = [
 const STATUSES: MembershipStatus[] = ["invited", "active", "disabled"];
 
 type Notice = { tone: "success" | "error"; message: string } | null;
-type ProductArea = "assistant" | "knowledge-qa" | "workspace";
+type ProductArea = "assistant" | "knowledge-qa" | "approvals" | "workspace";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -419,6 +420,16 @@ export default function Home() {
           </button>
           <button
             type="button"
+            className={productArea === "approvals" ? "product-link active" : "product-link"}
+            onClick={() => setProductArea("approvals")}
+            disabled={qaPending}
+            aria-current={productArea === "approvals" ? "page" : undefined}
+          >
+            <span className="product-icon" aria-hidden="true">✓</span>
+            <span><strong>Approvals</strong><small>Human review</small></span>
+          </button>
+          <button
+            type="button"
             className={productArea === "workspace" ? "product-link active" : "product-link"}
             onClick={() => setProductArea("workspace")}
             disabled={qaPending}
@@ -445,9 +456,9 @@ export default function Home() {
         <header className="topbar">
           <div>
             <p className="section-kicker">
-              {productArea === "assistant" ? "Workspace / Agent" : productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : "Workspace administration"}
+              {productArea === "assistant" ? "Workspace / Agent" : productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : productArea === "approvals" ? "Workspace / Human approval" : "Workspace administration"}
             </p>
-            <h1>{productArea === "assistant" ? "Assistant" : productArea === "knowledge-qa" ? "Knowledge Q&A" : selectedWorkspace?.name ?? "Workspaces"}</h1>
+            <h1>{productArea === "assistant" ? "Assistant" : productArea === "knowledge-qa" ? "Knowledge Q&A" : productArea === "approvals" ? "Approvals" : selectedWorkspace?.name ?? "Workspaces"}</h1>
             {productArea !== "workspace" && selectedWorkspace && (
               <p className="topbar-context">{selectedWorkspace.name}</p>
             )}
@@ -508,6 +519,17 @@ export default function Home() {
               knowledgeBases={knowledgeBases}
               knowledgeBasesPending={workspacePending}
               knowledgeBasesError={knowledgeBasesError}
+              accessToken={accessToken}
+              onUnauthorized={() => clearSession("Your session expired. Sign in again to continue.")}
+              onPendingChange={setQaPending}
+            />
+          ) : workspace && selectedWorkspace && productArea === "approvals" ? (
+            <Approvals
+              key={workspace.id}
+              workspaceId={workspace.id}
+              workspaceName={workspace.name}
+              currentUserId={currentUser.id}
+              canReview={isAdministrator}
               accessToken={accessToken}
               onUnauthorized={() => clearSession("Your session expired. Sign in again to continue.")}
               onPendingChange={setQaPending}
