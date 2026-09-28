@@ -1,6 +1,6 @@
 # Feature 002 - Workspace & Membership API
 
-Status: Draft  
+Status: Implemented - merged into main (PR #7)
 Milestone: 1
 
 ## 1. Goal

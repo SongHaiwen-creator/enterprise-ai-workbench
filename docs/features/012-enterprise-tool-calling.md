@@ -1,6 +1,6 @@
 # Feature 012 - Enterprise Tool Calling
 
-Status: Implemented - Pull Request review pending; not merged
+Status: Implemented - merged into main (PR #28)
 Milestone: 3
 Issue: #27
 

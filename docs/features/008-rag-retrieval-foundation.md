@@ -1,6 +1,6 @@
 # Feature 008 - RAG Retrieval Foundation
 
-Status: Approved
+Status: Implemented - merged into main (PR #20)
 Milestone: 2
 
 ## 1. Goal

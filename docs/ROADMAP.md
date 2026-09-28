@@ -20,7 +20,7 @@ The goal is not to build every planned feature at once.
 
 # 2. Milestone 0 - Project Foundation
 
-Status: In Progress
+Status: Baseline delivered
 
 Goal:
 
@@ -45,6 +45,8 @@ Acceptance Criteria:
 ---
 
 # 3. Milestone 1 - Workspace & RBAC
+
+Status: Baseline delivered (Features 001-005 merged)
 
 Goal:
 
@@ -109,6 +111,8 @@ MVP roles:
 
 # 4. Milestone 2 - Enterprise Knowledge Base
 
+Status: Baseline delivered (Features 006-010 merged)
+
 Goal:
 
 Allow enterprise administrators to manage knowledge
@@ -164,6 +168,8 @@ and allow employees to retrieve authorized information.
 
 # 5. Milestone 3 - Agent & Enterprise Tools
 
+Status: In Progress (Features 011-012 merged; Human Approval outstanding)
+
 Goal:
 
 Move from knowledge Q&A to executable enterprise AI tasks.
@@ -208,6 +214,8 @@ Sensitive actions require approval before execution.
 ---
 
 # 6. Milestone 4 - Logs, Evaluation & Bad Cases
+
+Status: Not Started
 
 Goal:
 
