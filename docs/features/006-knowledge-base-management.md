@@ -1,6 +1,6 @@
 # Feature 006 - Knowledge Base Management API
 
-Status: Approved
+Status: Implemented - merged into main (PR #14)
 Milestone: 2
 
 ## 1. Goal

@@ -1,6 +1,6 @@
 # Feature 009 - Grounded RAG Answer and Citation
 
-Status: Approved - implementation in progress
+Status: Implemented - merged into main (PR #22)
 Milestone: 2
 
 ## 1. Goal

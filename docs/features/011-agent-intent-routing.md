@@ -1,6 +1,7 @@
 # Feature 011 - Agent and Intent Routing
 
-Status: Approved - implementation in progress (approval baseline: commit `7524471`, Issue #25)
+Status: Implemented - merged into main (PR #26)
+Approval baseline: commit `7524471`, Issue #25
 Milestone: 3
 
 ## 1. Goal
