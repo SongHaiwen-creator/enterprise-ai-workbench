@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.generation import get_generation_provider
@@ -12,7 +13,17 @@ from app.api.dependencies.tool_selection import get_tool_selector
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
 from app.main import app
-from app.models import Agent, AgentTool, KnowledgeBase, Membership, Tool, User, Workspace
+from app.models import (
+    Agent,
+    AgentTool,
+    Approval,
+    KnowledgeBase,
+    Membership,
+    MockITAccessRequest,
+    Tool,
+    User,
+    Workspace,
+)
 from app.models.enums import (
     AgentStatus,
     KnowledgeBaseStatus,
@@ -1003,7 +1014,7 @@ def test_employee_tool_returns_only_authenticated_profile(
     }
 
 
-def test_sensitive_tool_requires_approval_without_creating_or_executing(
+def test_sensitive_tool_creates_pending_approval_without_executing(
     client: TestClient,
     db_session: Session,
     auth_settings: Settings,
@@ -1031,15 +1042,31 @@ def test_sensitive_tool_requires_approval_without_creating_or_executing(
     )
 
     assert response.status_code == 200
-    assert response.json()["outcome"] == {
+    outcome = response.json()["outcome"]
+    approval = outcome.pop("approval")
+    assert outcome == {
         "status": "approval_required",
         "tool": {"tool_key": "create_it_access_request", "name": configured.name},
         "executed": False,
         "approval_required": True,
         "validated_arguments": arguments,
         "result": None,
-        "message": "This request requires human approval and was not executed.",
+        "message": (
+            "An approval request was submitted for human review. Nothing was executed."
+        ),
     }
+    assert set(approval) == {
+        "id", "decision_status", "execution_status", "created_at", "expires_at"
+    }
+    assert approval["decision_status"] == "pending"
+    assert approval["execution_status"] == "not_started"
+    persisted = db_session.scalars(
+        select(Approval).where(Approval.workspace_id == scope.id)
+    ).all()
+    assert [str(item.id) for item in persisted] == [approval["id"]]
+    assert db_session.scalars(
+        select(MockITAccessRequest).where(MockITAccessRequest.workspace_id == scope.id)
+    ).all() == []
 
 
 def test_disabled_unassigned_and_foreign_tools_are_not_effective(

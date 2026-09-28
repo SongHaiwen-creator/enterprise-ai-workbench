@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.models.enums import ToolRisk
+from app.models.enums import MembershipRole, ToolRisk
 from app.schemas.tool_calling import (
     CreateITAccessRequestArguments,
     EmployeeInformationResult,
@@ -25,6 +25,31 @@ ToolAdapter = Callable[[object, BaseModel], BaseModel | Mapping[str, Any]]
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalPolicy:
+    """Code-owned reviewer policy copied into every Approval snapshot."""
+
+    policy_version: str
+    required_reviewer_roles: tuple[MembershipRole, ...]
+    self_approval_allowed: bool
+    ttl_hours: int
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalRequirement:
+    """Execution-critical constants for a Tool that runs only after approval.
+
+    Any change to the argument model, business validation, write executor, or
+    result model must bump ``tool_definition_version`` or ``executor_key``.
+    """
+
+    action_type: str
+    tool_definition_version: str
+    executor_key: str
+    executor_type: str
+    policy: ApprovalPolicy
+
+
+@dataclass(frozen=True, slots=True)
 class ToolDefinition:
     tool_key: str
     selector_name: str
@@ -35,6 +60,15 @@ class ToolDefinition:
     risk: ToolRisk
     immediate_execution: bool
     adapter: ToolAdapter | None
+    approval: ApprovalRequirement | None = None
+
+
+IT_ACCESS_APPROVAL_POLICY = ApprovalPolicy(
+    policy_version="it-access-approval-v1",
+    required_reviewer_roles=(MembershipRole.SYSTEM_ADMIN,),
+    self_approval_allowed=False,
+    ttl_hours=72,
+)
 
 
 def _reimbursement_adapter(context: object, arguments: BaseModel) -> BaseModel:
@@ -95,6 +129,13 @@ TOOL_REGISTRY: Mapping[str, ToolDefinition] = MappingProxyType(
             risk=ToolRisk.HIGH,
             immediate_execution=False,
             adapter=None,
+            approval=ApprovalRequirement(
+                action_type="it_access_request.create",
+                tool_definition_version="create_it_access_request.v1",
+                executor_key="mock_it_access_request.v1",
+                executor_type="local_mock",
+                policy=IT_ACCESS_APPROVAL_POLICY,
+            ),
         ),
     }
 )

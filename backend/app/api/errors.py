@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from app.services.approvals import ApprovalOutcomeError
 from app.services.exceptions import (
     AuthenticationError,
     ConflictError,
@@ -9,6 +10,17 @@ from app.services.exceptions import (
 )
 
 BEARER_HEADERS = {"WWW-Authenticate": "Bearer"}
+
+
+async def approval_outcome_error_handler(
+    request: Request,
+    exc: ApprovalOutcomeError,
+) -> JSONResponse:
+    del request
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "approval_id": str(exc.approval_id)},
+    )
 
 
 async def not_found_error_handler(
@@ -52,3 +64,4 @@ def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ConflictError, conflict_error_handler)
     app.add_exception_handler(AuthenticationError, authentication_error_handler)
     app.add_exception_handler(ForbiddenError, forbidden_error_handler)
+    app.add_exception_handler(ApprovalOutcomeError, approval_outcome_error_handler)
