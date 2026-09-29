@@ -5,7 +5,11 @@ from fastapi import APIRouter, Body, HTTPException, Query
 
 from app.api.dependencies.auth import CurrentUser, DatabaseSession
 from app.api.dependencies.authorization import ActiveWorkspaceMembership
-from app.models.enums import ApprovalDecisionStatus, ApprovalExecutionStatus
+from app.models.enums import (
+    ApprovalDecisionStatus,
+    ApprovalExecutionStatus,
+    ExecutionLogOperation,
+)
 from app.schemas.approval import (
     ApprovalCancelRequest,
     ApprovalDecisionRequest,
@@ -14,6 +18,7 @@ from app.schemas.approval import (
 )
 from app.schemas.common import ErrorResponse
 from app.services import approvals as approval_service
+from app.services.execution_logs import execution_log
 
 APPROVAL_RESPONSES = {
     401: {"model": ErrorResponse},
@@ -96,18 +101,26 @@ def decide_approval(
     _membership: ActiveWorkspaceMembership,
     current_user: CurrentUser,
 ) -> ApprovalResponse:
-    approval_service.decide_approval(
+    with execution_log(
         session,
         workspace_id=workspace_id,
-        approval_id=approval_id,
         user_id=current_user.id,
-        decision=payload.decision,
-        note=payload.note,
-    )
-    try:
-        return approval_service.get_approval_response(session, workspace_id, approval_id)
-    except approval_service.ApprovalConfigurationError as exc:
-        raise _unavailable(exc) from exc
+        operation=ExecutionLogOperation.APPROVAL_DECISION,
+    ) as trace:
+        trace.approval_id = approval_id
+        trace.details["decision"] = payload.decision
+        approval_service.decide_approval(
+            session,
+            workspace_id=workspace_id,
+            approval_id=approval_id,
+            user_id=current_user.id,
+            decision=payload.decision,
+            note=payload.note,
+        )
+        try:
+            return approval_service.get_approval_response(session, workspace_id, approval_id)
+        except approval_service.ApprovalConfigurationError as exc:
+            raise _unavailable(exc) from exc
 
 
 @router.post(
@@ -124,13 +137,20 @@ def cancel_approval(
     payload: Annotated[ApprovalCancelRequest | None, Body()] = None,
 ) -> ApprovalResponse:
     del payload
-    approval_service.cancel_approval(
+    with execution_log(
         session,
         workspace_id=workspace_id,
-        approval_id=approval_id,
         user_id=current_user.id,
-    )
-    try:
-        return approval_service.get_approval_response(session, workspace_id, approval_id)
-    except approval_service.ApprovalConfigurationError as exc:
-        raise _unavailable(exc) from exc
+        operation=ExecutionLogOperation.APPROVAL_CANCEL,
+    ) as trace:
+        trace.approval_id = approval_id
+        approval_service.cancel_approval(
+            session,
+            workspace_id=workspace_id,
+            approval_id=approval_id,
+            user_id=current_user.id,
+        )
+        try:
+            return approval_service.get_approval_response(session, workspace_id, approval_id)
+        except approval_service.ApprovalConfigurationError as exc:
+            raise _unavailable(exc) from exc

@@ -5,6 +5,7 @@ from app.api.routes.answers import router as answers_router
 from app.api.routes.approvals import router as approvals_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.documents import router as documents_router
+from app.api.routes.execution_logs import router as execution_logs_router
 from app.api.routes.knowledge_bases import router as knowledge_bases_router
 from app.api.routes.retrieval import router as retrieval_router
 from app.api.routes.tools import assignment_router as agent_tools_router
@@ -22,3 +23,4 @@ api_router.include_router(agents_router)
 api_router.include_router(tools_router)
 api_router.include_router(agent_tools_router)
 api_router.include_router(approvals_router)
+api_router.include_router(execution_logs_router)
