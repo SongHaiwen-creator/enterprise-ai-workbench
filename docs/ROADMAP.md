@@ -168,7 +168,7 @@ and allow employees to retrieve authorized information.
 
 # 5. Milestone 3 - Agent & Enterprise Tools
 
-Status: In Progress (Features 011-012 merged; Feature 013 Human Approval in review)
+Status: Baseline delivered (Features 011-013 merged)
 
 Goal:
 
@@ -221,7 +221,7 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 
 # 6. Milestone 4 - Logs, Evaluation & Bad Cases
 
-Status: Not Started
+Status: In Progress (Feature 014 Execution Logs proposed; Phase A awaiting approval)
 
 Goal:
 
