@@ -4,7 +4,10 @@ import test from "node:test";
 import {
   ApiError,
   answerKnowledgeQuestion,
+  decideApproval,
+  getApproval,
   listAgents,
+  listApprovals,
   listKnowledgeBases,
   normalizeBaseUrl,
   requestJson,
@@ -185,4 +188,39 @@ test("formats API enum labels and initials for display", () => {
   assert.equal(formatEnumLabel("invited"), "Invited");
   assert.equal(initials("Alice Zhang"), "AZ");
   assert.equal(initials(" "), "?");
+});
+
+test("calls Approval endpoints with only the decision and optional note", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({ url: String(input), init });
+    return new Response(JSON.stringify({ items: [], limit: 50, offset: 0 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await listApprovals("workspace-1", "review", "test-token");
+    await getApproval("workspace-1", "approval-1", "test-token");
+    await decideApproval("workspace-1", "approval-1", "approve", "Looks right", "test-token");
+    await decideApproval("workspace-1", "approval-1", "reject", null, "test-token");
+
+    const base = "http://localhost:8000/api/workspaces/workspace-1/approvals";
+    assert.deepEqual(requests.map((request) => request.url), [
+      `${base}?scope=review`,
+      `${base}/approval-1`,
+      `${base}/approval-1/decision`,
+      `${base}/approval-1/decision`,
+    ]);
+    assert.equal(requests[2].init?.method, "POST");
+    assert.deepEqual(JSON.parse(String(requests[2].init?.body)), {
+      decision: "approve",
+      note: "Looks right",
+    });
+    assert.deepEqual(JSON.parse(String(requests[3].init?.body)), { decision: "reject" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

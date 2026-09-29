@@ -344,7 +344,8 @@ when the Workflow feature is implemented.
 
 # 12. Approval
 
-Represents a human approval request.
+Represents one human decision on a server-generated execution snapshot for a
+write-sensitive Tool (Feature 013). Decision and execution are separate facts.
 
 Table: approvals
 
@@ -354,14 +355,64 @@ Fields:
 |---|---|---|
 | id | UUID | Primary key |
 | workspace_id | UUID | Foreign key → workspaces.id |
-| requester_id | UUID | Foreign key → users.id |
-| approver_id | UUID | Foreign key → users.id |
-| action_type | VARCHAR | Requested action |
-| status | VARCHAR | pending / approved / rejected / cancelled |
-| request_payload | JSONB | Requested operation data |
-| decision_note | TEXT | Approval comment |
+| requester_id | UUID | Composite foreign key (requester_id, workspace_id) → memberships(user_id, workspace_id) |
+| agent_id | UUID | Composite foreign key → agents(id, workspace_id) |
+| tool_id | UUID | Composite foreign key → tools(id, workspace_id) |
+| action_type | VARCHAR(64) | it_access_request.create |
+| canonical_arguments | JSONB | Validated arguments; the only execution input |
+| canonical_arguments_sha256 | CHAR(64) | Versioned hash of the canonical arguments |
+| capability_snapshot | JSONB | Execution-critical Workspace, requester Membership, Agent, Tool, assignment, and registry versions |
+| policy_snapshot | JSONB | Approval policy version, reviewer roles, self-approval flag, TTL |
+| snapshot_sha256 | CHAR(64) | Versioned digest over the arguments hash and both snapshots |
+| decision_status | VARCHAR(16) | pending / approved / rejected / cancelled / expired / invalidated |
+| decided_by | UUID | Reviewer or cancelling requester; composite foreign key → memberships |
+| decided_at | TIMESTAMP | Time of leaving pending; equals expires_at for expired |
+| decision_note | TEXT | Optional 1-1000 character note; approved / rejected only |
+| invalidation_reason | VARCHAR(32) | requester_ineligible / capability_unavailable / configuration_drift |
+| invalidation_triggered_by | UUID | Reviewer whose approve attempt found the problem; composite foreign key → memberships |
+| execution_status | VARCHAR(16) | not_started / succeeded / failed |
+| executed_at | TIMESTAMP | Time of the single execution attempt |
+| execution_failure_category | VARCHAR(32) | adapter_error |
+| expires_at | TIMESTAMP | created_at + 72 hours (database time) |
 | created_at | TIMESTAMP | Creation time |
-| decided_at | TIMESTAMP | Decision time |
+| updated_at | TIMESTAMP | Last update time |
+
+Revision `0009` adds CHECK constraints for every value set and for the legal
+`(decision_status, execution_status)` pairs (`approved` with `succeeded` or
+`failed`; every other decision with `not_started`), timestamp and actor
+presence, no self-decision, requester-only cancellation, notes only on human
+decisions, and `decided_at = expires_at` for expiry. A partial unique index
+`uq_approvals_pending_dedupe (workspace_id, requester_id, snapshot_sha256)
+WHERE decision_status = 'pending'` suppresses duplicate pending requests only.
+`uq_approvals_id_workspace_id` supports the Mock record foreign key. All
+foreign keys use `ON DELETE RESTRICT`.
+
+Users stay global identities. The composite Membership foreign keys only
+guarantee that a named User has a Membership in the Approval's Workspace;
+Membership status and role are verified by the service at each boundary.
+
+## 12.1 Mock IT Access Request
+
+Table: mock_it_access_requests
+
+The record written by the single local Mock write adapter after an approval.
+It is a mock enterprise-system object, never a Workbench permission.
+
+| Field | Type | Description |
+|---|---|---|
+| id | UUID | Primary key |
+| workspace_id | UUID | Foreign key → workspaces.id |
+| approval_id | UUID | Unique; composite foreign key → approvals(id, workspace_id) |
+| requester_id | UUID | Composite foreign key → memberships(user_id, workspace_id) |
+| reference | VARCHAR(32) | Unique deterministic ITAR-XXXXXXXXXXXX reference |
+| system | VARCHAR(32) | production_database / analytics_warehouse / source_control |
+| access_level | VARCHAR(16) | read_only / standard; production_database requires read_only |
+| duration_days | INTEGER | 1-90 |
+| status | VARCHAR(16) | recorded |
+| created_at | TIMESTAMP | Creation time |
+
+`UNIQUE (approval_id)` guarantees at most one business write per Approval.
+The business justification is not copied into the Mock record.
 
 ---
 

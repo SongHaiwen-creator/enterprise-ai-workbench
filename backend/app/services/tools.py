@@ -18,10 +18,12 @@ from app.models.enums import (
 )
 from app.schemas.tool import ToolConfigurationResponse, ToolCreate, ToolUpdate
 from app.schemas.tool_calling import (
+    ApprovalReference,
     ToolApprovalRequiredOutcome,
     ToolExecutedOutcome,
     ToolNotExecutedOutcome,
 )
+from app.services.approvals import ApprovalConfigurationError, create_pending_approval
 from app.services.exceptions import (
     WORKSPACE_ACCESS_DENIED,
     ConflictError,
@@ -45,7 +47,7 @@ NO_PERMITTED_TOOL_MESSAGE = (
 )
 EXECUTED_MESSAGE = "The read-only enterprise capability completed successfully."
 APPROVAL_REQUIRED_MESSAGE = (
-    "This request requires human approval and was not executed."
+    "An approval request was submitted for human review. Nothing was executed."
 )
 TOOL_PROVIDER_FAILURE = "Tool selector request failed"
 TOOL_ADAPTER_FAILURE = "Enterprise Tool request failed"
@@ -347,9 +349,28 @@ def handle_tool_request(
 
     reference = {"tool_key": tool.tool_key, "name": tool.name}
     if not definition.immediate_execution:
+        try:
+            approval = create_pending_approval(
+                session,
+                workspace_id=workspace_id,
+                requester_id=user_id,
+                agent_id=agent_id,
+                tool_id=tool.id,
+                definition=definition,
+                arguments=arguments,
+            )
+        except ApprovalConfigurationError as exc:
+            raise ToolRegistryConfigurationError(TOOL_REGISTRY_FAILURE) from exc
         return ToolApprovalRequiredOutcome(
             tool=reference,
             validated_arguments=arguments,
+            approval=ApprovalReference(
+                id=approval.id,
+                decision_status=approval.decision_status,
+                execution_status=approval.execution_status,
+                created_at=approval.created_at,
+                expires_at=approval.expires_at,
+            ),
             message=APPROVAL_REQUIRED_MESSAGE,
         )
     if (

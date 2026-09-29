@@ -386,6 +386,9 @@ export function Assistant({
                 <div><dt>Duration</dt><dd>{toolOutcome.validated_arguments.duration_days} days</dd></div>
                 <div className="tool-result-wide"><dt>Business justification</dt><dd>{toolOutcome.validated_arguments.business_justification}</dd></div>
               </dl>
+              <p className="approval-reference">
+                Approval ID {toolOutcome.approval.id} · Decision {toolOutcome.approval.decision_status.replaceAll("_", " ")} · Execution {toolOutcome.approval.execution_status.replaceAll("_", " ")}
+              </p>
               <p className="tool-result-message">{toolOutcome.message}</p>
             </article>
           )}

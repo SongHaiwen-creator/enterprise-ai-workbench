@@ -1,7 +1,10 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Literal, Self
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.models.enums import ApprovalDecisionStatus, ApprovalExecutionStatus
 
 
 class GetReimbursementStatusArguments(BaseModel):
@@ -122,6 +125,18 @@ class ToolExecutedOutcome(BaseModel):
         return self
 
 
+class ApprovalReference(BaseModel):
+    """Persisted Approval pointer; display-only and never an execution grant."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    decision_status: ApprovalDecisionStatus
+    execution_status: ApprovalExecutionStatus
+    created_at: datetime
+    expires_at: datetime
+
+
 class ToolApprovalRequiredOutcome(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -130,6 +145,7 @@ class ToolApprovalRequiredOutcome(BaseModel):
     executed: Literal[False] = False
     approval_required: Literal[True] = True
     validated_arguments: CreateITAccessRequestArguments
+    approval: ApprovalReference
     result: None = None
     message: str
 

@@ -168,7 +168,7 @@ and allow employees to retrieve authorized information.
 
 # 5. Milestone 3 - Agent & Enterprise Tools
 
-Status: In Progress (Features 011-012 merged; Human Approval outstanding)
+Status: In Progress (Features 011-012 merged; Feature 013 Human Approval in review)
 
 Goal:
 
@@ -202,6 +202,11 @@ Initial mock tools:
 
 Sensitive actions require approval before execution.
 
+Feature 013 persists Approvals with an immutable execution snapshot, lets a
+same-Workspace `system_admin` other than the requester approve or reject, and
+executes a single local Mock IT access write only after a still-valid
+approval. A minimal Approvals UI lists, shows, approves, and rejects.
+
 ## Acceptance Criteria
 
 - Agent can distinguish knowledge questions from tool requests
@@ -209,7 +214,8 @@ Sensitive actions require approval before execution.
 - Tool arguments are validated
 - High-risk actions create approval requests
 - High-risk tools cannot execute before approval
-- Tool execution creates logs
+- Tool execution creates logs (write-sensitive executions are recorded as Feature 013
+  Approval lifecycle facts; generic execution logs are Milestone 4 / Feature 014)
 
 ---
 

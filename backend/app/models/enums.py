@@ -38,6 +38,31 @@ class ToolStatus(StrEnum):
     DISABLED = "disabled"
 
 
+class ApprovalDecisionStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+    INVALIDATED = "invalidated"
+
+
+class ApprovalExecutionStatus(StrEnum):
+    NOT_STARTED = "not_started"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class ApprovalInvalidationReason(StrEnum):
+    REQUESTER_INELIGIBLE = "requester_ineligible"
+    CAPABILITY_UNAVAILABLE = "capability_unavailable"
+    CONFIGURATION_DRIFT = "configuration_drift"
+
+
+class ApprovalExecutionFailure(StrEnum):
+    ADAPTER_ERROR = "adapter_error"
+
+
 class DocumentFileType(StrEnum):
     PDF = "pdf"
     TXT = "txt"

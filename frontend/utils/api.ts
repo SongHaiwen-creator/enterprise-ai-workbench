@@ -146,6 +146,80 @@ export type ToolExecutedOutcome =
       message: string;
     };
 
+export type ApprovalDecisionStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "expired"
+  | "invalidated";
+
+export type ApprovalExecutionStatus = "not_started" | "succeeded" | "failed";
+
+export interface ITAccessRequestArguments {
+  system: "production_database" | "analytics_warehouse" | "source_control";
+  access_level: "read_only" | "standard";
+  business_justification: string;
+  duration_days: number;
+}
+
+export interface ApprovalReference {
+  id: string;
+  decision_status: ApprovalDecisionStatus;
+  execution_status: ApprovalExecutionStatus;
+  created_at: string;
+  expires_at: string;
+}
+
+export interface ApprovalParty {
+  id: string;
+  name: string;
+}
+
+export interface ApprovalResponse {
+  id: string;
+  workspace_id: string;
+  decision_status: ApprovalDecisionStatus;
+  execution_status: ApprovalExecutionStatus;
+  action_type: "it_access_request.create";
+  tool: PublicToolReference & { tool_key: "create_it_access_request" };
+  agent: ApprovalParty;
+  requester: ApprovalParty;
+  arguments: ITAccessRequestArguments;
+  created_at: string;
+  expires_at: string;
+  decision: {
+    decided_by: ApprovalParty | null;
+    decided_at: string;
+    note: string | null;
+    invalidation_reason:
+      | "requester_ineligible"
+      | "capability_unavailable"
+      | "configuration_drift"
+      | null;
+  } | null;
+  execution: {
+    executed_at: string;
+    failure_category: "adapter_error" | null;
+    result: {
+      type: "it_access_request";
+      reference: string;
+      system: ITAccessRequestArguments["system"];
+      access_level: ITAccessRequestArguments["access_level"];
+      duration_days: number;
+      status: "recorded";
+    } | null;
+  } | null;
+}
+
+export interface ApprovalListResponse {
+  items: ApprovalResponse[];
+  limit: number;
+  offset: number;
+}
+
+export type ApprovalScope = "mine" | "review";
+
 export type ToolOutcome =
   | ToolExecutedOutcome
   | {
@@ -153,12 +227,8 @@ export type ToolOutcome =
       tool: PublicToolReference & { tool_key: "create_it_access_request" };
       executed: false;
       approval_required: true;
-      validated_arguments: {
-        system: "production_database" | "analytics_warehouse" | "source_control";
-        access_level: "read_only" | "standard";
-        business_justification: string;
-        duration_days: number;
-      };
+      validated_arguments: ITAccessRequestArguments;
+      approval: ApprovalReference;
       result: null;
       message: string;
     }
@@ -363,6 +433,47 @@ export function answerKnowledgeQuestion(
     {
       method: "POST",
       body: JSON.stringify({ question }),
+    },
+    accessToken,
+  );
+}
+
+export function listApprovals(
+  workspaceId: string,
+  scope: ApprovalScope,
+  accessToken: string,
+): Promise<ApprovalListResponse> {
+  return requestJson<ApprovalListResponse>(
+    `/api/workspaces/${workspaceId}/approvals?scope=${scope}`,
+    {},
+    accessToken,
+  );
+}
+
+export function getApproval(
+  workspaceId: string,
+  approvalId: string,
+  accessToken: string,
+): Promise<ApprovalResponse> {
+  return requestJson<ApprovalResponse>(
+    `/api/workspaces/${workspaceId}/approvals/${approvalId}`,
+    {},
+    accessToken,
+  );
+}
+
+export function decideApproval(
+  workspaceId: string,
+  approvalId: string,
+  decision: "approve" | "reject",
+  note: string | null,
+  accessToken: string,
+): Promise<ApprovalResponse> {
+  return requestJson<ApprovalResponse>(
+    `/api/workspaces/${workspaceId}/approvals/${approvalId}/decision`,
+    {
+      method: "POST",
+      body: JSON.stringify(note ? { decision, note } : { decision }),
     },
     accessToken,
   );

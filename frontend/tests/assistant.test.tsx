@@ -270,7 +270,7 @@ describe("Assistant", () => {
     expect(screen.getByText("Software Engineer")).toBeInTheDocument();
   });
 
-  it("shows validated IT fields and no approval controls or identifier", async () => {
+  it("shows validated IT fields and the Approval reference without decision controls", async () => {
     mockedRoute.mockResolvedValue({
       request: "Request production access",
       intent: "tool_request",
@@ -285,8 +285,15 @@ describe("Assistant", () => {
           business_justification: "Investigate approved production incidents.",
           duration_days: 14,
         },
+        approval: {
+          id: "approval-123",
+          decision_status: "pending",
+          execution_status: "not_started",
+          created_at: "2026-09-28T10:00:00Z",
+          expires_at: "2026-10-01T10:00:00Z",
+        },
         result: null,
-        message: "This request requires human approval and was not executed.",
+        message: "An approval request was submitted for human review. Nothing was executed.",
       },
     });
     renderAssistant();
@@ -296,8 +303,14 @@ describe("Assistant", () => {
     expect(screen.getByText("production database")).toBeInTheDocument();
     expect(screen.getByText("14 days")).toBeInTheDocument();
     expect(screen.getByText("Investigate approved production incidents.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /approve|reject/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/approval id/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve|reject|cancel/i }))
+      .not.toBeInTheDocument();
+    expect(screen.getByText(
+      "Approval ID approval-123 · Decision pending · Execution not started",
+    )).toBeInTheDocument();
+    expect(screen.getByText(
+      "An approval request was submitted for human review. Nothing was executed.",
+    )).toBeInTheDocument();
   });
 
   it("routes unsupported requests even when knowledge bases cannot be loaded", async () => {
