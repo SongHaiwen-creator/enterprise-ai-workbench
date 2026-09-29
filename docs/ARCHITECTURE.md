@@ -175,7 +175,7 @@ trusted. Creation, decision, and execution are separately authorized from
 current Membership, Agent, Tool, and assignment state, and competing
 decisions are serialized by an Approval row lock. The only write executor is
 a statically registered local Mock adapter; there is no generic HTTP executor.
-Generic execution logs belong to the Logs & Evaluation milestone.
+Generic execution logs are recorded by Feature 014 (Section 9).
 
 ---
 
@@ -201,6 +201,18 @@ They must never be committed to Git.
 ### Auditability
 
 Sensitive AI and tool actions should generate execution logs.
+
+Feature 014 records one allow-listed `execution_logs` row per handled Agent
+request, grounded knowledge answer, and Approval decision or cancel. The
+recorder wraps the route handler, classifies the outcome by exception type,
+and writes after the business transaction ends: work the handler left
+uncommitted is rolled back to a handler-entry savepoint and is never
+committed by the log. Recording is best-effort and never changes the
+response; for write-sensitive actions the Approval row remains the
+authoritative audit record. Records store IDs, enums, latency, and
+allow-listed metrics only, never request or answer content. Same-Workspace
+`agent_admin` and `system_admin` read them through the API and a read-only
+view.
 
 ---
 

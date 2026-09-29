@@ -215,13 +215,14 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 - High-risk actions create approval requests
 - High-risk tools cannot execute before approval
 - Tool execution creates logs (write-sensitive executions are recorded as Feature 013
-  Approval lifecycle facts; generic execution logs are Milestone 4 / Feature 014)
+  Approval lifecycle facts; Feature 014 execution logs record every Agent request,
+  including read-only Tool executions)
 
 ---
 
 # 6. Milestone 4 - Logs, Evaluation & Bad Cases
 
-Status: In Progress (Feature 014 Execution Logs proposed; Phase A awaiting approval)
+Status: In Progress (Feature 014 Execution Logs implemented; in review)
 
 Goal:
 

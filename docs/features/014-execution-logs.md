@@ -1,6 +1,6 @@
 # Feature 014 - Execution Logs
 
-Status: Phase A approved (revision 2, H1-H4 decided); Phase B implementation authorized
+Status: Implemented in Phase B (pending independent review and human merge); Phase A specification (revision 2, H1-H4) approved
 Milestone: 4
 Baseline: `main` at `ec55dd2` (Features 001-013 merged; Alembic head `0009`)
 Risk class: High (`AGENTS.md` High-Risk Changes: new migration; security-sensitive
@@ -345,13 +345,14 @@ record. An unmapped exception is `internal_error` and is re-raised unchanged.
 1. The route handler runs its existing logic unchanged.
 2. The outcome (response or exception) is determined and `latency_ms` is
    taken.
-3. The recorder ends the business transaction: it rolls back whatever is
-   still open on the request session. Business services own their commits
+3. The recorder ends the business transaction: it rolls back whatever the
+   handler left uncommitted. Business services own their commits
    (Section 4); anything they did not commit is not part of the outcome, so
    rolling back is equivalent to what `get_db_session` does on error and is
-   a no-op for work already committed.
-4. The recorder inserts the record in a new log transaction on the same
-   request session, with `SET LOCAL lock_timeout = '5s'`, and commits.
+   a no-op for work already committed. Phase B mechanism: Section 10.4.
+4. The recorder inserts the record on the same request session, with
+   `SET LOCAL lock_timeout = '5s'`, and commits. That transaction contains
+   no business writes (step 3).
 5. The route returns the already-built response, or re-raises the original
    exception unchanged.
 
@@ -368,6 +369,32 @@ Because the response model is built before step 3 and the session uses
   never commit a business write that its owning service did not commit.
 - **No extra connection.** Using the request session keeps pool usage and
   test isolation as they are today.
+
+### 10.4 Phase B mechanism for step 3
+
+The recorder opens a SAVEPOINT at handler entry (`session.begin_nested()`).
+Under SQLAlchemy 2.0, a service's `session.commit()` or `session.rollback()`
+still ends the outermost transaction (and with it the savepoint), so
+Feature 012-013 transaction ownership is unchanged. At exit:
+
+- If the savepoint is still active, no service ended the transaction since
+  handler entry: the recorder rolls back **to the savepoint**, discarding
+  everything the handler did and nothing that preceded it.
+- Otherwise a service committed or rolled back. Session events
+  (`after_flush`, DML via `do_orm_execute`, reset on `after_commit` /
+  `after_rollback`) plus pending ORM state detect writes made after that
+  point; if any exist, the recorder rolls back the whole session.
+- Then the record is inserted and committed.
+
+Why not an unconditional `session.rollback()`: the effect on committed data
+is identical, but a whole-session rollback also discards state that the
+request session held before the handler ran. In production that state is
+only the Workspace-authorization reads. The API test harness shares one
+savepoint-mode session between fixtures and the app, so an unconditional
+rollback there would discard flushed but uncommitted fixture data and break
+existing Feature 011-013 tests. The savepoint keeps both guarantees
+(no business work is ever committed by the recorder; no self-wait) without
+modifying existing tests (AC-014).
 
 ### 10.3 Failure policy (H2)
 
@@ -522,9 +549,10 @@ Additional CHECK constraints:
 Indexes:
 
 - `ix_execution_logs_workspace_created` on
-  `(workspace_id, created_at DESC, id DESC)` (list order).
+  `(workspace_id, created_at, id)` (list order `created_at DESC, id DESC`
+  via a backward index scan).
 - `ix_execution_logs_workspace_agent_created` on
-  `(workspace_id, agent_id, created_at DESC)` (Agent filter).
+  `(workspace_id, agent_id, created_at)` (Agent filter).
 
 Rules:
 
