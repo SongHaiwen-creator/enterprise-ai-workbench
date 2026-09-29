@@ -27,6 +27,7 @@ from app.models.enums import (
 )
 from app.schemas.agent_routing import RoutingIntent
 from app.schemas.answer import AnswerStatus
+from app.services import approvals as approval_service
 from app.services import execution_logs
 from app.services.answers import AnswerCitation, AnswerResult
 from app.services.generation import GenerationUsage
@@ -101,6 +102,10 @@ def client(
     selector: FakeToolSelector,
 ) -> Generator[TestClient, None, None]:
     def override_db_session() -> Generator[Session, None, None]:
+        # Release fixture setup into the test connection's outer transaction
+        # before the request starts.  The production recorder may then roll
+        # back the request Session unconditionally without erasing setup.
+        db_session.commit()
         yield db_session
 
     try:
@@ -398,7 +403,7 @@ def test_tool_adapter_failure_and_revoked_caller_are_recorded(
     client: TestClient, db_session: Session, scenario: Scenario,
     selector: FakeToolSelector, settings: Settings, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    add_tool(db_session, scenario, "get_reimbursement_status")
+    tool = add_tool(db_session, scenario, "get_reimbursement_status")
     selector.selection = ToolSelectionProposal("get_reimbursement_status", {})
 
     def broken(context: object, arguments: object) -> object:
@@ -420,7 +425,31 @@ def test_tool_adapter_failure_and_revoked_caller_are_recorded(
         row.error_category.value for row in logs(db_session, scenario, "agent_route")
     )
     assert categories == ["access_denied", "tool_execution_failed"]
+    failed = next(
+        row for row in logs(db_session, scenario, "agent_route")
+        if row.error_category.value == "tool_execution_failed"
+    )
+    assert (failed.tool_id, failed.tool_key) == (tool.id, tool.tool_key)
     assert "SENTINEL-adapter-internal" not in row_text(db_session, scenario)
+
+
+def test_tool_result_validation_failure_keeps_only_resolved_tool_identity(
+    client: TestClient, db_session: Session, scenario: Scenario,
+    selector: FakeToolSelector, settings: Settings, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tool = add_tool(db_session, scenario, "get_reimbursement_status")
+    selector.selection = ToolSelectionProposal("get_reimbursement_status", {})
+    monkeypatch.setattr(
+        "app.services.tool_execution.get_reimbursement_status",
+        lambda context, arguments: {"SENTINEL-result": "never store this"},
+    )
+
+    assert route(client, scenario, settings).status_code == 502
+    row = only_log(db_session, scenario, "agent_route")
+    assert (row.error_category.value, row.tool_id, row.tool_key) == (
+        "tool_execution_failed", tool.id, tool.tool_key,
+    )
+    assert "SENTINEL-result" not in row_text(db_session, scenario)
 
 
 # --- knowledge_answer ---------------------------------------------------------
@@ -538,7 +567,7 @@ def test_approval_decisions_record_committed_state(
     assert observed == sorted([
         (approved, "succeeded", 200, "approved_execution_succeeded", "None", "approve"),
         (approved, "succeeded", 200, "approved_execution_succeeded", "None", "approve"),
-        (approved, "failed", 409, "None", "approval_not_pending", "reject"),
+        (approved, "failed", 409, "approved_execution_succeeded", "approval_not_pending", "reject"),
         (rejected, "succeeded", 200, "rejected", "None", "reject"),
     ])
     for row in rows:
@@ -594,6 +623,42 @@ def test_approval_failures_that_change_state_record_the_outcome(
         failed: ("approved_execution_failed", "approval_execution_failed", 502),
     }
     assert "SENTINEL-executor-detail" not in row_text(db_session, scenario)
+
+
+@pytest.mark.parametrize(
+    ("operation", "decision", "expected_outcome"),
+    [
+        ("approval_decision", "reject", "rejected"),
+        ("approval_decision", "approve", "approved_execution_succeeded"),
+        ("approval_cancel", None, "cancelled"),
+    ],
+)
+def test_projection_failure_after_committed_approval_state_keeps_outcome(
+    client: TestClient, db_session: Session, scenario: Scenario,
+    selector: FakeToolSelector, settings: Settings, monkeypatch: pytest.MonkeyPatch,
+    operation: str, decision: str | None, expected_outcome: str,
+) -> None:
+    approval_id = request_approval(client, scenario, selector, settings)
+
+    def broken_projection(*_: object, **__: object) -> object:
+        raise approval_service.ApprovalConfigurationError(
+            approval_service.APPROVAL_CONFIGURATION_UNAVAILABLE
+        )
+
+    monkeypatch.setattr(approval_service, "get_approval_response", broken_projection)
+    if operation == "approval_decision":
+        response = decide(client, scenario, approval_id, settings, decision or "reject")
+    else:
+        response = client.post(
+            f"{scenario.approval_url(approval_id)}/cancel",
+            headers=bearer(scenario.requester, settings),
+        )
+
+    assert response.status_code == 503
+    row = only_log(db_session, scenario, operation)
+    assert (row.status.value, row.error_category.value, row.outcome.value) == (
+        "failed", "tool_configuration_error", expected_outcome,
+    )
 
 
 def test_approval_visibility_failures_and_cancel(

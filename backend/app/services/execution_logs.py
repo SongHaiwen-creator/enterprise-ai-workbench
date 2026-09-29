@@ -16,8 +16,8 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import Select, event, select, text
-from sqlalchemy.orm import ORMExecuteState, Session, SessionTransaction, aliased
+from sqlalchemy import Select, select, text
+from sqlalchemy.orm import Session, aliased
 
 from app.models import Agent, Approval, ExecutionLog, KnowledgeBase, Tool, User
 from app.models.enums import (
@@ -71,7 +71,9 @@ logger = logging.getLogger(__name__)
 
 EXECUTION_LOG_NOT_FOUND = "Execution log not found"
 WRITE_FAILED_EVENT = "execution_log_write_failed"
-LOG_LOCK_TIMEOUT = "5s"
+# Recording is best-effort.  It must not consume the Approval decision
+# lock-timeout budget a second time when another request owns a referenced row.
+LOG_LOCK_TIMEOUT = "250ms"
 SUCCESS_STATUS = 200
 
 Category = ExecutionLogErrorCategory
@@ -201,16 +203,6 @@ def approval_outcome(
     }.get(decision_status)
 
 
-# Failures whose business state change was committed by this request, so the
-# Approval's committed state is the operation outcome (spec BR-06).
-_APPROVAL_STATE_CHANGING_FAILURES = frozenset(
-    {
-        Category.APPROVAL_INVALIDATED,
-        Category.APPROVAL_EXPIRED,
-        Category.APPROVAL_EXECUTION_FAILED,
-    }
-)
-
 # --- Recorder ---------------------------------------------------------------
 
 
@@ -224,46 +216,11 @@ class ExecutionTrace:
     routing_intent: RoutingIntent | None = None
     outcome: ExecutionLogOutcome | None = None
     agent_id: UUID | None = None
+    tool_id: UUID | None = None
     tool_key: str | None = None
     approval_id: UUID | None = None
     knowledge_base_id: UUID | None = None
     details: dict[str, Any] = field(default_factory=dict)
-
-
-class _UncommittedWriteTracker:
-    """Detect business writes the handler left uncommitted on the session."""
-
-    def __init__(self, session: Session) -> None:
-        self.session = session
-        self.pending = False
-
-    def _flushed(self, *_: object) -> None:
-        self.pending = True
-
-    def _executed(self, state: ORMExecuteState) -> None:
-        if state.is_insert or state.is_update or state.is_delete:
-            self.pending = True
-
-    def _ended(self, *_: object) -> None:
-        self.pending = False
-
-    def __enter__(self) -> "_UncommittedWriteTracker":
-        event.listen(self.session, "after_flush", self._flushed)
-        event.listen(self.session, "do_orm_execute", self._executed)
-        event.listen(self.session, "after_commit", self._ended)
-        event.listen(self.session, "after_rollback", self._ended)
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        event.remove(self.session, "after_flush", self._flushed)
-        event.remove(self.session, "do_orm_execute", self._executed)
-        event.remove(self.session, "after_commit", self._ended)
-        event.remove(self.session, "after_rollback", self._ended)
-
-    @property
-    def has_uncommitted_writes(self) -> bool:
-        session = self.session
-        return self.pending or bool(session.new or session.dirty or session.deleted)
 
 
 def record_grounded_answer(trace: ExecutionTrace, answer: GroundedAnswerResponse) -> None:
@@ -301,24 +258,15 @@ def execution_log(
 
     trace = ExecutionTrace(workspace_id=workspace_id, user_id=user_id, operation=operation)
     started = time.perf_counter()
-    with _UncommittedWriteTracker(session) as tracker:
-        # Marks handler entry. Services still commit or roll back the
-        # outermost transaction (SQLAlchemy 2.0), which also ends this
-        # savepoint, so their transaction ownership is unchanged.
-        handler_savepoint = session.begin_nested()
-        try:
-            yield trace
-        except Exception as exc:
-            latency_ms = _elapsed_ms(started)
-            http_status, category = classify_exception(exc)
-            _record(
-                session, handler_savepoint, tracker, trace, latency_ms, http_status, category
-            )
-            raise
+    try:
+        yield trace
+    except Exception as exc:
         latency_ms = _elapsed_ms(started)
-        _record(
-            session, handler_savepoint, tracker, trace, latency_ms, SUCCESS_STATUS, None
-        )
+        http_status, category = classify_exception(exc)
+        _record(session, trace, latency_ms, http_status, category)
+        raise
+    latency_ms = _elapsed_ms(started)
+    _record(session, trace, latency_ms, SUCCESS_STATUS, None)
 
 
 def _elapsed_ms(started: float) -> int:
@@ -327,8 +275,6 @@ def _elapsed_ms(started: float) -> int:
 
 def _record(
     session: Session,
-    handler_savepoint: SessionTransaction,
-    tracker: _UncommittedWriteTracker,
     trace: ExecutionTrace,
     latency_ms: int,
     http_status: int,
@@ -337,14 +283,11 @@ def _record(
     """Write the record; never raises and never commits business work."""
 
     try:
-        # Work its owning service did not commit is not part of the outcome;
-        # discard it before the log commit (spec 10.1).
-        if handler_savepoint.is_active:
-            # No service ended the transaction since handler entry: discard
-            # everything the handler did, keep what preceded it.
-            handler_savepoint.rollback()
-        elif tracker.has_uncommitted_writes:
-            session.rollback()
+        # The request session may contain pending ORM state, Core/textual
+        # DML, connection-level DML, or an aborted transaction.  Only an
+        # unconditional rollback establishes that the log transaction cannot
+        # commit business work the recorder does not own.
+        session.rollback()
         with session.no_autoflush:
             row = _build_row(session, trace, latency_ms, http_status, category)
         session.execute(text(f"SET LOCAL lock_timeout = '{LOG_LOCK_TIMEOUT}'"))
@@ -379,13 +322,22 @@ def _build_row(
         )
     tool_id: UUID | None = None
     tool_key: str | None = None
-    if trace.tool_key is not None:
-        tool_id = session.scalar(
-            select(Tool.id).where(
+    if trace.tool_id is not None:
+        tool = session.execute(
+            select(Tool.id, Tool.tool_key).where(
+                Tool.id == trace.tool_id, Tool.workspace_id == workspace_id
+            )
+        ).one_or_none()
+        if tool is not None:
+            tool_id, tool_key = tool.id, tool.tool_key
+    elif trace.tool_key is not None:
+        tool = session.execute(
+            select(Tool.id, Tool.tool_key).where(
                 Tool.workspace_id == workspace_id, Tool.tool_key == trace.tool_key
             )
-        )
-        tool_key = trace.tool_key if tool_id is not None else None
+        ).one_or_none()
+        if tool is not None:
+            tool_id, tool_key = tool.id, tool.tool_key
 
     outcome = trace.outcome
     approval_id: UUID | None = None
@@ -409,9 +361,7 @@ def _build_row(
             approval_id = approval.id
             agent_id = agent_id or approval.agent_id
             tool_id, tool_key = approval.tool_id, approval.tool_key
-            if trace.operation in {Operation.APPROVAL_DECISION, Operation.APPROVAL_CANCEL} and (
-                category is None or category in _APPROVAL_STATE_CHANGING_FAILURES
-            ):
+            if trace.operation in {Operation.APPROVAL_DECISION, Operation.APPROVAL_CANCEL}:
                 outcome = approval_outcome(approval.decision_status, approval.execution_status)
 
     return ExecutionLog(

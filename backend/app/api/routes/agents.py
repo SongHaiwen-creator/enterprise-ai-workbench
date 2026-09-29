@@ -260,6 +260,9 @@ def _route_agent_request(
         except ToolSelectionConfigurationError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except (ToolSelectionProviderError, ToolAdapterError) as exc:
+            if isinstance(exc, ToolAdapterError):
+                trace.tool_id = exc.tool_id
+                trace.tool_key = exc.tool_key
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except ToolRegistryConfigurationError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc

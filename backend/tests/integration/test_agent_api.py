@@ -132,6 +132,7 @@ def client(
     tool_selector: FakeToolSelector,
 ) -> Generator[TestClient, None, None]:
     def override_db_session() -> Generator[Session, None, None]:
+        db_session.commit()
         yield db_session
 
     app.dependency_overrides[get_db_session] = override_db_session

@@ -65,6 +65,17 @@ class ToolRegistryConfigurationError(Exception):
 class ToolAdapterError(Exception):
     """A backend-owned Tool adapter failed or returned invalid output."""
 
+    def __init__(
+        self,
+        detail: str,
+        *,
+        tool_id: UUID | None = None,
+        tool_key: str | None = None,
+    ) -> None:
+        super().__init__(detail)
+        self.tool_id = tool_id
+        self.tool_key = tool_key
+
 
 def _definition_for(tool: Tool) -> ToolDefinition:
     definition = get_tool_definition(tool.tool_key)
@@ -345,7 +356,9 @@ def handle_tool_request(
     try:
         arguments = definition.argument_model.model_validate(selection.arguments)
     except ValidationError as exc:
-        raise ToolAdapterError(TOOL_PROVIDER_FAILURE) from exc
+        raise ToolAdapterError(
+            TOOL_PROVIDER_FAILURE, tool_id=tool.id, tool_key=tool.tool_key
+        ) from exc
 
     reference = {"tool_key": tool.tool_key, "name": tool.name}
     if not definition.immediate_execution:
@@ -398,4 +411,6 @@ def handle_tool_request(
             message=EXECUTED_MESSAGE,
         )
     except Exception as exc:
-        raise ToolAdapterError(TOOL_ADAPTER_FAILURE) from exc
+        raise ToolAdapterError(
+            TOOL_ADAPTER_FAILURE, tool_id=tool.id, tool_key=tool.tool_key
+        ) from exc

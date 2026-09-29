@@ -351,7 +351,7 @@ record. An unmapped exception is `internal_error` and is re-raised unchanged.
    rolling back is equivalent to what `get_db_session` does on error and is
    a no-op for work already committed. Phase B mechanism: Section 10.4.
 4. The recorder inserts the record on the same request session, with
-   `SET LOCAL lock_timeout = '5s'`, and commits. That transaction contains
+   `SET LOCAL lock_timeout = '250ms'`, and commits. That transaction contains
    no business writes (step 3).
 5. The route returns the already-built response, or re-raises the original
    exception unchanged.
@@ -372,29 +372,20 @@ Because the response model is built before step 3 and the session uses
 
 ### 10.4 Phase B mechanism for step 3
 
-The recorder opens a SAVEPOINT at handler entry (`session.begin_nested()`).
-Under SQLAlchemy 2.0, a service's `session.commit()` or `session.rollback()`
-still ends the outermost transaction (and with it the savepoint), so
-Feature 012-013 transaction ownership is unchanged. At exit:
+At handler exit, before building the record or issuing any log SQL, the
+recorder unconditionally calls `session.rollback()`. This discards every
+uncommitted request-session change, including pending or flushed ORM state,
+Core/textual DML, connection-level DML, and an aborted transaction after a
+database error. Work that a Feature 009-013 service already committed is not
+affected. The recorder then starts a new short transaction to resolve safe
+references, insert the log, and commit it.
 
-- If the savepoint is still active, no service ended the transaction since
-  handler entry: the recorder rolls back **to the savepoint**, discarding
-  everything the handler did and nothing that preceded it.
-- Otherwise a service committed or rolled back. Session events
-  (`after_flush`, DML via `do_orm_execute`, reset on `after_commit` /
-  `after_rollback`) plus pending ORM state detect writes made after that
-  point; if any exist, the recorder rolls back the whole session.
-- Then the record is inserted and committed.
-
-Why not an unconditional `session.rollback()`: the effect on committed data
-is identical, but a whole-session rollback also discards state that the
-request session held before the handler ran. In production that state is
-only the Workspace-authorization reads. The API test harness shares one
-savepoint-mode session between fixtures and the app, so an unconditional
-rollback there would discard flushed but uncommitted fixture data and break
-existing Feature 011-013 tests. The savepoint keeps both guarantees
-(no business work is ever committed by the recorder; no self-wait) without
-modifying existing tests (AC-014).
+No SAVEPOINT or Session-event write tracker is used as a safety boundary:
+`Session.begin_nested()` flushes pending state before the savepoint, and DML
+tracking cannot reliably observe textual, connection-level, or nested
+transaction activity. Feature tests use committed setup data or a
+production-like request Session; fixture preservation must never weaken the
+production transaction boundary.
 
 ### 10.3 Failure policy (H2)
 
@@ -406,6 +397,11 @@ returns normally. The HTTP status, body, and all committed business state
 are unchanged. The authoritative audit record for write-sensitive actions
 remains the Feature 013 Approval row; execution logs are operational
 traceability, not the system of record.
+
+The log transaction uses a deliberately short `250ms` lock timeout. A
+business Approval operation may already have consumed its `5s` lock timeout;
+the recorder must not add another comparable wait. A log timeout simply drops
+the record under this best-effort policy.
 
 Consequence: a record can be missing if the database fails between the
 business commit and the log commit. This is accepted for Feature 014 and
@@ -728,8 +724,11 @@ records, not as their owner.
   not time out.
 - Forced log write failure: original status and body returned, business rows
   unchanged, no record.
-- Business-transaction isolation: a route whose business work is not
-  committed does not become committed by the recorder.
+- Business-transaction isolation: pending/flushed pre-entry state, Core/textual
+  and connection-level DML, uncommitted handler work, post-commit DML, nested
+  savepoint activity, and an aborted post-commit transaction never become
+  committed by the recorder; an aborted transaction still records a sanitized
+  `internal_error`.
 - Read API authorization matrix, cross-Workspace `404`, filters,
   pagination, ordering, `405` for write methods.
 
