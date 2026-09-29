@@ -8,6 +8,7 @@ import {
   getApproval,
   listAgents,
   listApprovals,
+  listExecutionLogs,
   listKnowledgeBases,
   normalizeBaseUrl,
   requestJson,
@@ -220,6 +221,34 @@ test("calls Approval endpoints with only the decision and optional note", async 
       note: "Looks right",
     });
     assert.deepEqual(JSON.parse(String(requests[3].init?.body)), { decision: "reject" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("reads execution logs with only the selected filters and pagination", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    requests.push({ url: String(input), init });
+    return new Response(JSON.stringify({ items: [], limit: 50, offset: 0 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  try {
+    await listExecutionLogs("workspace-1", {}, 50, 0, "test-token");
+    await listExecutionLogs(
+      "workspace-1", { operation: "approval_cancel", status: "failed" }, 50, 100, "test-token",
+    );
+
+    const base = "http://localhost:8000/api/workspaces/workspace-1/execution-logs";
+    assert.deepEqual(requests.map((request) => request.url), [
+      `${base}?limit=50&offset=0`,
+      `${base}?limit=50&offset=100&operation=approval_cancel&status=failed`,
+    ]);
+    assert.equal(requests[0].init?.method, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }

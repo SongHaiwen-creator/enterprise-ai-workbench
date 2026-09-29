@@ -220,6 +220,59 @@ export interface ApprovalListResponse {
 
 export type ApprovalScope = "mine" | "review";
 
+export type ExecutionLogOperation =
+  | "agent_route"
+  | "knowledge_answer"
+  | "approval_decision"
+  | "approval_cancel";
+
+export type ExecutionLogStatus = "succeeded" | "failed";
+
+export interface ExecutionLogDetails {
+  tool_not_executed_reason?:
+    | "no_available_tool"
+    | "no_matching_tool"
+    | "missing_required_arguments"
+    | null;
+  citation_count?: number | null;
+  generation_model?: string | null;
+  prompt_version?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  decision?: "approve" | "reject" | null;
+}
+
+export interface ExecutionLog {
+  id: string;
+  workspace_id: string;
+  operation: ExecutionLogOperation;
+  routing_intent: "knowledge_qa" | "tool_request" | "unsupported" | null;
+  status: ExecutionLogStatus;
+  outcome: string | null;
+  error_category: string | null;
+  http_status: number;
+  latency_ms: number;
+  user: ApprovalParty;
+  agent: ApprovalParty | null;
+  tool: PublicToolReference | null;
+  approval_id: string | null;
+  knowledge_base: ApprovalParty | null;
+  details: ExecutionLogDetails;
+  created_at: string;
+}
+
+export interface ExecutionLogListResponse {
+  items: ExecutionLog[];
+  limit: number;
+  offset: number;
+}
+
+export interface ExecutionLogFilters {
+  operation?: ExecutionLogOperation;
+  status?: ExecutionLogStatus;
+}
+
 export type ToolOutcome =
   | ToolExecutedOutcome
   | {
@@ -475,6 +528,23 @@ export function decideApproval(
       method: "POST",
       body: JSON.stringify(note ? { decision, note } : { decision }),
     },
+    accessToken,
+  );
+}
+
+export function listExecutionLogs(
+  workspaceId: string,
+  filters: ExecutionLogFilters,
+  limit: number,
+  offset: number,
+  accessToken: string,
+): Promise<ExecutionLogListResponse> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (filters.operation) params.set("operation", filters.operation);
+  if (filters.status) params.set("status", filters.status);
+  return requestJson<ExecutionLogListResponse>(
+    `/api/workspaces/${workspaceId}/execution-logs?${params.toString()}`,
+    {},
     accessToken,
   );
 }

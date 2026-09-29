@@ -413,6 +413,22 @@ td select { min-width: 9rem; min-height: 2.25rem; font-size: 0.76rem; }
 .approval-message { margin-top: 0.9rem; padding: 0.8rem 0.9rem; border: 1px solid var(--line); border-radius: 0.7rem; }
 .approval-message p { margin: 0.25rem 0 0; }
 
+.execution-log-filters { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-top: 1.1rem; }
+.execution-log-filters label { display: grid; gap: 0.3rem; color: var(--muted); font-size: 0.78rem; font-weight: 700; }
+.execution-log-filters select { min-width: 12rem; padding: 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: 0.6rem; color: var(--ink); background: var(--panel); }
+.execution-log-table-wrap { margin-top: 1.1rem; overflow-x: auto; border: 1px solid var(--line); border-radius: 0.75rem; }
+.execution-log-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.execution-log-table th { padding: 0.65rem 0.8rem; color: var(--muted); font-size: 0.72rem; font-weight: 750; letter-spacing: 0.04em; text-align: left; text-transform: uppercase; white-space: nowrap; background: var(--soft); }
+.execution-log-table td { padding: 0.65rem 0.8rem; border-top: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+.execution-log-table .numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.execution-log-detail-row td { white-space: normal; background: #fafcfb; }
+.execution-log-fields { margin: 0.2rem 0; }
+.execution-log-fields dd { text-transform: none; }
+.log-status-succeeded { color: #1f5c46; background: var(--mint); }
+.log-status-failed { color: #8b312b; background: #fae9e7; }
+.execution-log-toggle { padding: 0.3rem 0.6rem; border: 1px solid var(--line); border-radius: 999px; color: var(--forest); background: var(--panel); font-size: 0.78rem; font-weight: 700; }
+.execution-log-more { margin-top: 1rem; padding: 0.55rem 1rem; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); background: var(--panel); font-weight: 700; }
+
 @keyframes pulse { 0%, 70%, 100% { opacity: 0.35; transform: translateY(0); } 35% { opacity: 1; transform: translateY(-0.18rem); } }
 
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -444,6 +460,7 @@ td select { min-width: 9rem; min-height: 2.25rem; font-size: 0.76rem; }
   .assistant-context-grid { grid-template-columns: 1fr; }
   .grounded-badge { align-self: flex-start; }
   .ask-button { width: 100%; }
+  .execution-log-filters label, .execution-log-filters select { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

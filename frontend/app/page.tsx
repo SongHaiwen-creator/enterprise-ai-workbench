@@ -4,6 +4,7 @@ import { FormEvent, useRef, useState } from "react";
 
 import { Approvals } from "@/app/components/approvals";
 import { Assistant } from "@/app/components/assistant";
+import { ExecutionLogs } from "@/app/components/execution-logs";
 import type { AgentsLoadFailure } from "@/app/components/assistant";
 import { KnowledgeQA } from "@/app/components/knowledge-qa";
 import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
@@ -40,7 +41,7 @@ const ROLES: MembershipRole[] = [
 const STATUSES: MembershipStatus[] = ["invited", "active", "disabled"];
 
 type Notice = { tone: "success" | "error"; message: string } | null;
-type ProductArea = "assistant" | "knowledge-qa" | "approvals" | "workspace";
+type ProductArea = "assistant" | "knowledge-qa" | "approvals" | "execution-logs" | "workspace";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -57,7 +58,7 @@ export default function Home() {
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [knowledgeBasesError, setKnowledgeBasesError] =
     useState<KnowledgeBasesLoadFailure>(null);
-  const [productArea, setProductArea] = useState<ProductArea>("knowledge-qa");
+  const [requestedProductArea, setProductArea] = useState<ProductArea>("knowledge-qa");
   const [qaPending, setQaPending] = useState(false);
   const [loginPending, setLoginPending] = useState(false);
   const [workspacePending, setWorkspacePending] = useState(false);
@@ -71,6 +72,13 @@ export default function Home() {
   const selectedWorkspace =
     workspaces.find((item) => item.id === selectedWorkspaceId) ?? null;
   const isAdministrator = selectedWorkspace?.role === "system_admin";
+  // Presentation only: the backend authorizes every execution log read.
+  const canViewExecutionLogs =
+    selectedWorkspace?.role === "system_admin" || selectedWorkspace?.role === "agent_admin";
+  const productArea: ProductArea =
+    requestedProductArea === "execution-logs" && !canViewExecutionLogs
+      ? "workspace"
+      : requestedProductArea;
 
   function clearSession(message?: string) {
     workspaceRequestGeneration.current += 1;
@@ -428,6 +436,18 @@ export default function Home() {
             <span className="product-icon" aria-hidden="true">✓</span>
             <span><strong>Approvals</strong><small>Human review</small></span>
           </button>
+          {canViewExecutionLogs && (
+            <button
+              type="button"
+              className={productArea === "execution-logs" ? "product-link active" : "product-link"}
+              onClick={() => setProductArea("execution-logs")}
+              disabled={qaPending}
+              aria-current={productArea === "execution-logs" ? "page" : undefined}
+            >
+              <span className="product-icon" aria-hidden="true">≡</span>
+              <span><strong>Execution Logs</strong><small>AI traceability</small></span>
+            </button>
+          )}
           <button
             type="button"
             className={productArea === "workspace" ? "product-link active" : "product-link"}
@@ -456,9 +476,9 @@ export default function Home() {
         <header className="topbar">
           <div>
             <p className="section-kicker">
-              {productArea === "assistant" ? "Workspace / Agent" : productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : productArea === "approvals" ? "Workspace / Human approval" : "Workspace administration"}
+              {productArea === "assistant" ? "Workspace / Agent" : productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : productArea === "approvals" ? "Workspace / Human approval" : productArea === "execution-logs" ? "Workspace / Traceability" : "Workspace administration"}
             </p>
-            <h1>{productArea === "assistant" ? "Assistant" : productArea === "knowledge-qa" ? "Knowledge Q&A" : productArea === "approvals" ? "Approvals" : selectedWorkspace?.name ?? "Workspaces"}</h1>
+            <h1>{productArea === "assistant" ? "Assistant" : productArea === "knowledge-qa" ? "Knowledge Q&A" : productArea === "approvals" ? "Approvals" : productArea === "execution-logs" ? "Execution Logs" : selectedWorkspace?.name ?? "Workspaces"}</h1>
             {productArea !== "workspace" && selectedWorkspace && (
               <p className="topbar-context">{selectedWorkspace.name}</p>
             )}
@@ -533,6 +553,14 @@ export default function Home() {
               accessToken={accessToken}
               onUnauthorized={() => clearSession("Your session expired. Sign in again to continue.")}
               onPendingChange={setQaPending}
+            />
+          ) : workspace && selectedWorkspace && productArea === "execution-logs" ? (
+            <ExecutionLogs
+              key={workspace.id}
+              workspaceId={workspace.id}
+              workspaceName={workspace.name}
+              accessToken={accessToken}
+              onUnauthorized={() => clearSession("Your session expired. Sign in again to continue.")}
             />
           ) : workspace && selectedWorkspace ? (
             <>
