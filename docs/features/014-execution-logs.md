@@ -1,6 +1,6 @@
 # Feature 014 - Execution Logs
 
-Status: Phase A proposal (specification only; awaiting human approval of Section 23)
+Status: Phase A approved (revision 2, H1-H4 decided); Phase B implementation authorized
 Milestone: 4
 Baseline: `main` at `ec55dd2` (Features 001-013 merged; Alembic head `0009`)
 Risk class: High (`AGENTS.md` High-Risk Changes: new migration; security-sensitive
@@ -31,8 +31,9 @@ Authenticated, Workspace-authorized request
 
 Feature 014 must prove:
 
-1. Every in-scope operation that passes Workspace authorization yields exactly
-   one log record, on success and on every handled failure.
+1. Every request to an in-scope route whose handler body is entered yields
+   exactly one log record, on success and on every failure raised inside the
+   handler; a request rejected before the handler yields none (Section 6.1).
 2. A log record never contains request text, prompts, answers, citations,
    Tool arguments or results, justifications, decision notes, names, emails,
    provider payloads, exception messages, or stack traces.
@@ -47,9 +48,23 @@ Tool executions are currently unlogged.
 ## 2. Phase A Status
 
 Phase A is documentation only. No migration, model, service, route, frontend,
-or test code is part of this change. Phase B may start only after the gate in
-Section 23 is approved and the open human decisions in Section 24 are
-resolved.
+or test code is part of the Phase A change.
+
+The human maintainer approved the Section 23 gate and decided H1-H4 as
+recommended (Section 24). Migration `0010` is authorized for creation and for
+execution against the dedicated test database `enterprise_ai_workbench_test`
+only.
+
+Revision 2 applies the two clarifications required with that approval:
+
+- **Recording boundary.** The "exactly one record" invariant is defined by
+  handler entry, not by "passed Workspace authorization" (Section 6.1,
+  AC-002). The `knowledge_answer` embedding provider stays a FastAPI
+  dependency, so its configuration `503` is a pre-handler rejection and is
+  not recorded; existing tests and the external `503` are unchanged.
+- **AC-005 wording.** There is no Approval-creation operation. Creation or
+  deduplication is the `agent_route` outcome `tool_approval_required`;
+  `approval_decision` and `approval_cancel` are separate operations (AC-005).
 
 ## 3. Scope
 
@@ -133,26 +148,53 @@ spec.
 
 ## 6. Recorded Operations (H4)
 
-| Operation | Route | Recorded from |
-|---|---|---|
-| `agent_route` | `POST /api/workspaces/{workspace_id}/agents/{agent_id}/route` | after `ActiveWorkspaceMembership` succeeds |
-| `knowledge_answer` | `POST /api/workspaces/{workspace_id}/knowledge-bases/{knowledge_base_id}/answer` | after `ActiveWorkspaceMembership` succeeds |
-| `approval_decision` | `POST /api/workspaces/{workspace_id}/approvals/{approval_id}/decision` | after `ActiveWorkspaceMembership` succeeds |
-| `approval_cancel` | `POST /api/workspaces/{workspace_id}/approvals/{approval_id}/cancel` | after `ActiveWorkspaceMembership` succeeds |
+| Operation | Route |
+|---|---|
+| `agent_route` | `POST /api/workspaces/{workspace_id}/agents/{agent_id}/route` |
+| `knowledge_answer` | `POST /api/workspaces/{workspace_id}/knowledge-bases/{knowledge_base_id}/answer` |
+| `approval_decision` | `POST /api/workspaces/{workspace_id}/approvals/{approval_id}/decision` |
+| `approval_cancel` | `POST /api/workspaces/{workspace_id}/approvals/{approval_id}/cancel` |
 
-Rules:
+Approval creation is not a separate operation: creating or deduplicating a
+pending Approval is the `agent_route` outcome `tool_approval_required`.
 
-- Recording starts only after authentication and the existing Workspace
-  Membership dependency have succeeded, so every record has a real
-  same-Workspace user. Requests rejected by authentication, Workspace
-  authorization, role dependencies, or request-body validation (FastAPI
-  `422` before the handler) are **not** recorded. Security audit of rejected
-  access is out of scope (Section 22).
-- Errors raised by other FastAPI dependencies before the handler runs are
-  also not recorded. Today this is only the embedding configuration `503` of
-  the `knowledge_answer` route (`ConfiguredEmbeddingProvider`); the
-  `agent_route` creates its embedding provider inside the handler, so the
-  same condition is recorded there as `provider_unavailable`.
+### 6.1 Recording boundary
+
+A request to an in-scope route is recorded **if and only if FastAPI enters
+the route handler body**, that is, after every declared dependency and
+request validation has succeeded. From handler entry on, exactly one record
+is written for the request, whether the handler returns or raises (subject
+only to the best-effort write policy, Section 10.3).
+
+Because FastAPI resolves dependencies and validates the request before the
+handler runs, the following produce **no** record:
+
+| Pre-handler rejection | Typical status |
+|---|---|
+| Missing or invalid bearer token (`CurrentUser`) | `401` |
+| Workspace missing, disabled, or caller without active Membership (`ActiveWorkspaceMembership`) | `404` / `403` |
+| Path, query, or body validation | `422` |
+| `knowledge_answer` embedding configuration error (`ConfiguredEmbeddingProvider`) | `503` |
+
+Consequences:
+
+- Every record has a real, same-Workspace user whose Membership was active at
+  handler entry.
+- The `knowledge_answer` embedding provider remains a FastAPI dependency.
+  Feature 014 does not move it into the handler, so the existing external
+  `503` and the existing `get_embedding_provider` test overrides are
+  unchanged. The `agent_route` already creates its embedding provider inside
+  the handler, so the same condition there is recorded as
+  `provider_unavailable`.
+- Generation, routing, and selector providers are lazily configured and fail
+  inside the handler, so their configuration errors are recorded on every
+  in-scope route.
+- Adding a new dependency to an in-scope route changes this boundary and
+  must update this table.
+- Security audit of pre-handler rejections is out of scope (Section 22).
+
+### 6.2 Other rules
+
 - Not recorded: retrieval search, document indexing, all configuration CRUD
   (Workspaces, Members, Knowledge Bases, Documents, Agents, Tools,
   assignments), Approval list/read, and execution log reads.
@@ -580,16 +622,25 @@ records, not as their owner.
 - **AC-001** Additive migration `0010` creates `execution_logs` exactly per
   Section 14; `0001`-`0009` unchanged; upgrade and downgrade pass on the test
   database.
-- **AC-002** Each in-scope operation that passes Workspace authorization
-  writes exactly one record; rejected-before-handler requests write none.
+- **AC-002** Every request to an in-scope route whose handler body is
+  entered writes exactly one record, whether the handler returns or raises
+  (best-effort policy aside). Every pre-handler rejection listed in Section
+  6.1 (`401`, Workspace `403`/`404`, request validation `422`, and the
+  `knowledge_answer` embedding configuration `503`) writes none, and its
+  external response is unchanged.
 - **AC-003** `agent_route` records `routing_intent` and the correct outcome
   for knowledge answered/unsupported, Tool executed, approval required, Tool
   not executed (with reason), and unsupported request.
 - **AC-004** Read-only Tool executions are recorded with `tool_id` and
   `tool_key` (closes the Feature 013 Section 22.2 gap).
-- **AC-005** Approval creation, decision, and cancel records reference the
-  Approval, Agent, and Tool, and match the committed Approval state,
-  including `invalidated`, `expired`, and `approved_execution_failed`.
+- **AC-005** Approval creation or deduplication is recorded only as an
+  `agent_route` record with outcome `tool_approval_required` that references
+  the created or deduplicated Approval, its Agent, and its Tool; no separate
+  creation operation exists. `approval_decision` and `approval_cancel` are
+  separate operations whose records reference the Approval, Agent, and Tool
+  (except `approval_not_found`) and match the committed Approval state,
+  including `rejected`, `cancelled`, `invalidated`, `expired`,
+  `approved_execution_succeeded`, and `approved_execution_failed`.
 - **AC-006** Every handled failure in Section 9.2 records `status = failed`,
   the correct `http_status` and `error_category`, and resolved references
   only.
@@ -638,6 +689,9 @@ records, not as their owner.
 
 - One record per operation for every Section 9.1 outcome and every Section
   9.2 category reachable through the four routes.
+- Recording boundary: each Section 6.1 pre-handler rejection writes no
+  record and keeps its existing response; a failure raised inside the
+  handler writes exactly one.
 - Sentinel test: request text, Tool arguments, `business_justification`,
   decision note, user name and email, Agent system prompt, and fake provider
   answer text never appear in any stored column.
@@ -720,9 +774,9 @@ disagrees): one record per handled request; no stored content; no
 retention; no SQL triggers; latency excludes authentication and the log
 write.
 
-Open decisions, with recommendations:
+Decisions made by the human maintainer: H1-H4 approved as recommended.
 
-| ID | Decision | Recommendation | Alternative |
+| ID | Decision | Resolution (approved) | Alternative (rejected) |
 |---|---|---|---|
 | H1 | Who may read logs | `agent_admin` and `system_admin` (Product Spec: Agent Administrators "review execution results", System Administrators "view system logs") | `system_admin` only |
 | H2 | Log write failure policy | Best-effort: never change the business outcome; Approval rows remain the authoritative audit for writes | Fail closed: return `500` after the business commit (misleading, business state already changed) or write inside business transactions (changes Feature 012-013 transaction ownership) |
@@ -732,7 +786,7 @@ Open decisions, with recommendations:
 ## 25. Tracking
 
 - Branch: `feat/execution-logs` from `origin/main` (`ec55dd2`).
-- Issue: #32 - Feature 014 - Execution Logs (Phase A).
-- Pull Request: Phase A only, high-risk, specification and approval proposal
-  only, no implementation, no migration; not to be merged until the Section
-  23 gate is approved and Phase B passes independent review.
+- Issue: #32 - Feature 014 - Execution Logs.
+- Pull Request: #33. Phase A approved; Phase B is implemented on the same
+  branch. Not to be merged until Phase B passes independent review and a
+  human merges it.
