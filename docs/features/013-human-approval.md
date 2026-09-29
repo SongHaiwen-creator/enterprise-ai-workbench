@@ -89,6 +89,11 @@ Feature 013 scope: Feature 012 `business_justification` still rejects only
 ASCII controls; tightening it changes argument validation and may require a
 `tool_definition_version` bump, so it is tracked separately.
 
+Second independent review remediation (I2-M): approve re-checks expiry after
+execution authorization has taken its capability locks, so an Approval whose
+`expires_at` passes while the decision waits on an Agent, Tool, or
+`agent_tools` lock expires instead of being approved (Section 26).
+
 Phase A review corrections (checked against `main` at `f57cb8e`; no H1-H3
 decision changed):
 
@@ -1312,9 +1317,13 @@ are in Sections 7, 15, and 17.
   `clock_timestamp()`, never `now()` (transaction start). Decision paths read
   it after the Approval lock is held and compare it with `expires_at`, so a
   request that began before expiry but obtained the lock after expiry expires
-  the Approval (`decided_at = expires_at`) instead of deciding it. The same
-  reading is the `decided_at` of the decision; `executed_at` is read when the
-  outcome is written. Creation sets `created_at` and
+  the Approval (`decided_at = expires_at`) instead of deciding it. Approve
+  checks expiry again after execution authorization has taken the Agent,
+  Tool, and `agent_tools` locks, because it may wait on them; nothing after
+  that check waits on a lock, so an Approval never becomes `approved` or
+  `invalidated` after `expires_at`, and expiry takes precedence over
+  invalidation. The last reading is the `decided_at` of the decision;
+  `executed_at` is read when the outcome is written. Creation sets `created_at` and
   `expires_at = created_at + ttl` from one reading. Reads report effective
   `expired` without writing.
 - **Registry constants.** Add `action_type`, `tool_definition_version`,

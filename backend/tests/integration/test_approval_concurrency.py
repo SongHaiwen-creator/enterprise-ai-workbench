@@ -642,3 +642,97 @@ def test_decision_lock_obtained_after_expiry_cannot_approve(
     assert approval.decision_status is ApprovalDecisionStatus.EXPIRED
     assert approval.decided_at == approval.expires_at
     assert mock_count == 0
+
+
+CAPABILITY_LOCKS = {
+    "agent": "SELECT id FROM agents WHERE id = :agent_id FOR UPDATE",
+    "tool": "SELECT id FROM tools WHERE id = :tool_id FOR UPDATE",
+    "assignment": (
+        "SELECT agent_id FROM agent_tools "
+        "WHERE agent_id = :agent_id AND tool_id = :tool_id FOR UPDATE"
+    ),
+}
+
+
+@pytest.mark.parametrize("resource", sorted(CAPABILITY_LOCKS))
+def test_expiry_while_waiting_on_a_capability_lock_cannot_approve(
+    factory: sessionmaker[Session],
+    scenario: Scenario,
+    monkeypatch: pytest.MonkeyPatch,
+    resource: str,
+) -> None:
+    approval_id = create(factory, scenario)
+    executor_calls: list[object] = []
+    monkeypatch.setattr(
+        "app.services.approvals.WRITE_EXECUTORS",
+        {"mock_it_access_request.v1": lambda *args: executor_calls.append(args)},
+    )
+    with factory() as admin:
+        admin.execute(
+            text(
+                "UPDATE approvals SET created_at = clock_timestamp() - interval '72 hours', "
+                "expires_at = clock_timestamp() + interval '1500 milliseconds' "
+                "WHERE id = :id"
+            ),
+            {"id": approval_id},
+        )
+        admin.commit()
+
+    with factory() as holder:
+        holder.execute(
+            text(CAPABILITY_LOCKS[resource]),
+            {"agent_id": scenario.agent.id, "tool_id": scenario.tool.id},
+        )
+        # The decision passes the first expiry check under the Approval lock,
+        # then waits on execution authorization's capability lock.
+        thread, outcome = run_in_thread(
+            decision(factory, scenario, approval_id, scenario.reviewer.id)
+        )
+        wait_for_lock_waiter(factory)
+        expires_at = state(factory, approval_id)[0].expires_at
+        with factory() as clock:
+            while clock.scalar(text("SELECT clock_timestamp()")) <= expires_at:
+                clock.rollback()
+                time.sleep(0.1)
+        holder.rollback()
+    thread.join(timeout=30)
+
+    assert len(outcome) == 1
+    assert isinstance(outcome[0], ConflictError)
+    assert outcome[0].detail == "Approval has expired"
+    approval, mock_count = state(factory, approval_id)
+    assert approval.decision_status is ApprovalDecisionStatus.EXPIRED
+    assert approval.execution_status is ApprovalExecutionStatus.NOT_STARTED
+    assert approval.decided_at == approval.expires_at
+    assert approval.decided_by is None
+    assert approval.executed_at is None
+    assert executor_calls == []
+    assert mock_count == 0
+
+
+def test_approval_decision_time_is_read_after_capability_locks(
+    factory: sessionmaker[Session],
+    scenario: Scenario,
+) -> None:
+    approval_id = create(factory, scenario)
+    with factory() as holder:
+        holder.execute(
+            text(CAPABILITY_LOCKS["tool"]),
+            {"agent_id": scenario.agent.id, "tool_id": scenario.tool.id},
+        )
+        thread, outcome = run_in_thread(
+            decision(factory, scenario, approval_id, scenario.reviewer.id)
+        )
+        wait_for_lock_waiter(factory)
+        released_after = holder.scalar(text("SELECT clock_timestamp()"))
+        holder.rollback()
+    thread.join(timeout=30)
+
+    assert outcome == [None]
+    approval, mock_count = state(factory, approval_id)
+    assert approval.decision_status is ApprovalDecisionStatus.APPROVED
+    assert approval.execution_status is ApprovalExecutionStatus.SUCCEEDED
+    assert approval.decided_at is not None and approval.executed_at is not None
+    assert released_after < approval.decided_at <= approval.executed_at
+    assert approval.decided_at < approval.expires_at
+    assert mock_count == 1

@@ -445,6 +445,8 @@ def authorize_execution(
 #   3. User rows, by id        FOR SHARE    (caller and, for decisions, requester)
 #   4. Membership rows, by user_id FOR SHARE
 #   5. Agent, Tool, agent_tools FOR SHARE   (execution authorization only)
+# Expiry is checked after step 4 and, for approve, again after step 5, using
+# wall-clock time read once the relevant locks are held.
 # Authority is decided only from rows read after they are locked, so a
 # revocation committed while the request waited is always observed, and a
 # revocation attempted during the protected transaction waits for its commit.
@@ -659,14 +661,7 @@ def decide_approval(
             session.commit()
             return
 
-        _approve(
-            session,
-            approval,
-            workspace_id=workspace_id,
-            reviewer_id=user_id,
-            note=note,
-            decided_at=decided_at,
-        )
+        _approve(session, approval, workspace_id=workspace_id, reviewer_id=user_id, note=note)
 
     _run_locked(session, operation)
 
@@ -678,9 +673,13 @@ def _approve(
     workspace_id: UUID,
     reviewer_id: UUID,
     note: str | None,
-    decided_at: datetime,
 ) -> None:
     authorization = authorize_execution(session, approval, workspace_id=workspace_id)
+    # Execution authorization may wait on Agent, Tool, and assignment locks, so
+    # expiry is evaluated again once every blocking lock is held. Nothing after
+    # this point waits on a lock, so an Approval never becomes approved (or
+    # invalidated) after expires_at.
+    decided_at = _decision_time(session, approval)
     if not authorization.authorized:
         # H3: nothing is approved or executed; the snapshot is never refreshed.
         _transition(
