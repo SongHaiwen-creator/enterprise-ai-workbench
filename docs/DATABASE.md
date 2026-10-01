@@ -440,7 +440,11 @@ Messages will later be stored separately.
 
 # 14. Execution Log
 
-Stores important AI and tool execution events.
+Append-only, allow-listed record of one handled AI operation
+(Feature 014). One row per request to an in-scope route whose handler body
+is entered: `agent_route`, `knowledge_answer`, `approval_decision`,
+`approval_cancel`. Approval creation is the `agent_route` outcome
+`tool_approval_required`.
 
 Table: execution_logs
 
@@ -450,17 +454,36 @@ Fields:
 |---|---|---|
 | id | UUID | Primary key |
 | workspace_id | UUID | Foreign key → workspaces.id |
-| user_id | UUID | Foreign key → users.id |
-| agent_id | UUID | Foreign key → agents.id |
-| event_type | VARCHAR | rag / tool_call / approval / error |
-| input_data | JSONB | Input summary |
-| output_data | JSONB | Output summary |
-| status | VARCHAR | success / failed |
-| latency_ms | INTEGER | Execution latency |
+| user_id | UUID | Composite foreign key (user_id, workspace_id) → memberships(user_id, workspace_id) |
+| operation | VARCHAR(32) | agent_route / knowledge_answer / approval_decision / approval_cancel |
+| routing_intent | VARCHAR(32) | knowledge_qa / tool_request / unsupported; agent_route only |
+| status | VARCHAR(16) | succeeded / failed (failed iff non-2xx) |
+| outcome | VARCHAR(40) | Fixed product outcome enum; nullable |
+| error_category | VARCHAR(40) | Fixed sanitized failure enum; set iff failed |
+| http_status | SMALLINT | Response status, 100-599 |
+| latency_ms | INTEGER | Handler duration, >= 0 |
+| agent_id | UUID | Composite foreign key → agents(id, workspace_id); nullable |
+| tool_id | UUID | Composite foreign key → tools(id, workspace_id); nullable |
+| tool_key | VARCHAR(64) | Denormalized Tool key; set iff tool_id is set |
+| approval_id | UUID | Composite foreign key → approvals(id, workspace_id); nullable |
+| knowledge_base_id | UUID | Composite foreign key → knowledge_bases(id, workspace_id); nullable |
+| details | JSONB | Allow-listed metrics object (token counts, model and prompt version, citation count, not-executed reason, requested decision); default `{}` |
 | created_at | TIMESTAMP | Creation time |
 
-Sensitive information should not be stored
-without filtering.
+Revision `0010` creates the table with CHECK constraints for every value
+set, `status`/`error_category`/`http_status` consistency, `routing_intent`
+only on `agent_route`, the `tool_id`/`tool_key` pair, and an object-typed
+`details`. Indexes `ix_execution_logs_workspace_created
+(workspace_id, created_at, id)` and `ix_execution_logs_workspace_agent_created
+(workspace_id, agent_id, created_at)` serve the newest-first list. All
+foreign keys use `ON DELETE RESTRICT`; composite keys make cross-Workspace
+references impossible. No existing table changes.
+
+Request text, prompts, answers, citations, Tool arguments and results,
+justifications, decision notes, names, emails, provider payloads, and
+exception messages are never stored. Only same-Workspace `agent_admin` and
+`system_admin` can read records; there is no write API. Retention is not
+implemented yet.
 
 ---
 

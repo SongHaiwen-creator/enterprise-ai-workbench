@@ -84,6 +84,7 @@ def client(
     selector: FakeToolSelector,
 ) -> Generator[TestClient, None, None]:
     def override_db_session() -> Generator[Session, None, None]:
+        db_session.commit()
         yield db_session
 
     yield from install_overrides(override_db_session, settings, router_provider, selector)

@@ -7,6 +7,8 @@ from app.models import KnowledgeBase
 from app.schemas.knowledge_base import KnowledgeBaseCreate, KnowledgeBaseUpdate
 from app.services.exceptions import NotFoundError
 
+KNOWLEDGE_BASE_NOT_FOUND = "Knowledge base not found"
+
 
 def get_knowledge_base(
     session: Session,
@@ -20,7 +22,7 @@ def get_knowledge_base(
         )
     )
     if knowledge_base is None:
-        raise NotFoundError("Knowledge base not found")
+        raise NotFoundError(KNOWLEDGE_BASE_NOT_FOUND)
     return knowledge_base
 
 

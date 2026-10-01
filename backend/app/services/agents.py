@@ -8,6 +8,11 @@ from app.models.enums import AgentStatus
 from app.schemas.agent import AgentCreate, AgentUpdate
 from app.services.exceptions import NotFoundError
 
+AGENT_NOT_FOUND = "Agent not found"
+AGENT_NOT_ACTIVE = "Agent is not active"
+KNOWLEDGE_BASE_NOT_ACTIVE = "Knowledge base is not active"
+KNOWLEDGE_CONTEXT_REQUIRED = "Knowledge base context is required for knowledge questions."
+
 
 def get_agent(session: Session, workspace_id: UUID, agent_id: UUID) -> Agent:
     agent = session.scalar(
@@ -17,7 +22,7 @@ def get_agent(session: Session, workspace_id: UUID, agent_id: UUID) -> Agent:
         )
     )
     if agent is None:
-        raise NotFoundError("Agent not found")
+        raise NotFoundError(AGENT_NOT_FOUND)
     return agent
 
 

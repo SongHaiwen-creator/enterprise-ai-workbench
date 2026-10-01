@@ -117,6 +117,7 @@ def client(
     fake_generation_provider: FakeGenerationProvider,
 ) -> Generator[TestClient, None, None]:
     def override_db_session() -> Generator[Session, None, None]:
+        db_session.commit()
         yield db_session
 
     app.dependency_overrides[get_db_session] = override_db_session

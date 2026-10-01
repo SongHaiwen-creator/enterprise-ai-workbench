@@ -17,6 +17,8 @@ from app.services.embeddings import (
 from app.services.exceptions import ConflictError
 from app.services.knowledge_bases import get_knowledge_base
 
+KNOWLEDGE_BASE_SEARCH_DISABLED = "Cannot search a disabled knowledge base"
+
 
 @dataclass(frozen=True)
 class DocumentIndexResult:
@@ -121,7 +123,7 @@ def search_knowledge_base(
 ) -> list[SearchResult]:
     knowledge_base = get_knowledge_base(session, workspace_id, knowledge_base_id)
     if knowledge_base.status is KnowledgeBaseStatus.DISABLED:
-        raise ConflictError("Cannot search a disabled knowledge base")
+        raise ConflictError(KNOWLEDGE_BASE_SEARCH_DISABLED)
 
     query_embedding = _validated_embeddings(provider, [query])[0]
     distance = Chunk.embedding.cosine_distance(query_embedding).label("cosine_distance")

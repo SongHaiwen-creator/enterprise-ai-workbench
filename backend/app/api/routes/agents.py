@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import ApplicationSettings, CurrentUser, DatabaseSession
 from app.api.dependencies.authorization import (
@@ -11,7 +12,14 @@ from app.api.dependencies.authorization import (
 from app.api.dependencies.generation import ConfiguredGenerationProvider
 from app.api.dependencies.routing import ConfiguredRoutingProvider
 from app.api.dependencies.tool_selection import ConfiguredToolSelector
-from app.models.enums import AgentStatus, KnowledgeBaseStatus, MembershipRole
+from app.core.config import Settings
+from app.models.enums import (
+    AgentStatus,
+    ExecutionLogOperation,
+    ExecutionLogOutcome,
+    KnowledgeBaseStatus,
+    MembershipRole,
+)
 from app.schemas.agent import (
     AgentConfigurationResponse,
     AgentCreate,
@@ -29,30 +37,48 @@ from app.schemas.agent_routing import (
 )
 from app.schemas.answer import GenerationMetadata, GroundedAnswerResponse, GroundedCitation
 from app.schemas.common import ErrorResponse
+from app.schemas.tool_calling import (
+    ToolApprovalRequiredOutcome,
+    ToolExecutedOutcome,
+    ToolOutcome,
+)
 from app.services import agents as agent_service
 from app.services import answers as answer_service
 from app.services import knowledge_bases as knowledge_base_service
+from app.services.agents import (
+    AGENT_NOT_ACTIVE,
+    KNOWLEDGE_BASE_NOT_ACTIVE,
+    KNOWLEDGE_CONTEXT_REQUIRED,
+)
 from app.services.embeddings import (
     EmbeddingConfigurationError,
     EmbeddingProviderError,
     create_openai_embedding_provider,
 )
 from app.services.exceptions import ConflictError, ForbiddenError
+from app.services.execution_logs import (
+    ExecutionTrace,
+    execution_log,
+    record_grounded_answer,
+)
 from app.services.generation import (
     GenerationConfigurationError,
     GenerationInputTooLargeError,
+    GenerationProvider,
     GenerationProviderError,
 )
 from app.services.routing import (
     ROUTING_PROVIDER_FAILURE,
     RoutingConfigurationError,
     RoutingInputTooLargeError,
+    RoutingProvider,
     RoutingProviderError,
 )
 from app.services.tool_selection import (
     ToolSelectionConfigurationError,
     ToolSelectionInputTooLargeError,
     ToolSelectionProviderError,
+    ToolSelector,
 )
 from app.services.tools import (
     ToolAdapterError,
@@ -71,7 +97,6 @@ AGENT_RESPONSES = {
     502: {"model": ErrorResponse},
     503: {"model": ErrorResponse},
 }
-KNOWLEDGE_CONTEXT_REQUIRED = "Knowledge base context is required for knowledge questions."
 UNSUPPORTED_MESSAGE = "This request is outside the configured Agent capabilities."
 
 
@@ -156,9 +181,56 @@ def route_agent_request(
     settings: ApplicationSettings,
     generation_provider: ConfiguredGenerationProvider,
 ) -> AgentRouteResponse:
+    with execution_log(
+        session,
+        workspace_id=workspace_id,
+        user_id=current_user.id,
+        operation=ExecutionLogOperation.AGENT_ROUTE,
+    ) as trace:
+        return _route_agent_request(
+            trace,
+            workspace_id=workspace_id,
+            agent_id=agent_id,
+            payload=payload,
+            session=session,
+            current_user_id=current_user.id,
+            routing_provider=routing_provider,
+            tool_selector=tool_selector,
+            settings=settings,
+            generation_provider=generation_provider,
+        )
+
+
+def _record_tool_outcome(trace: ExecutionTrace, outcome: ToolOutcome) -> None:
+    if isinstance(outcome, ToolExecutedOutcome):
+        trace.outcome = ExecutionLogOutcome.TOOL_EXECUTED
+        trace.tool_key = outcome.tool.tool_key
+    elif isinstance(outcome, ToolApprovalRequiredOutcome):
+        trace.outcome = ExecutionLogOutcome.TOOL_APPROVAL_REQUIRED
+        trace.tool_key = outcome.tool.tool_key
+        trace.approval_id = outcome.approval.id
+    else:
+        trace.outcome = ExecutionLogOutcome.TOOL_NOT_EXECUTED
+        trace.details["tool_not_executed_reason"] = outcome.reason
+
+
+def _route_agent_request(
+    trace: ExecutionTrace,
+    *,
+    workspace_id: UUID,
+    agent_id: UUID,
+    payload: AgentRouteRequest,
+    session: Session,
+    current_user_id: UUID,
+    routing_provider: RoutingProvider,
+    tool_selector: ToolSelector,
+    settings: Settings,
+    generation_provider: GenerationProvider,
+) -> AgentRouteResponse:
     agent = agent_service.get_agent(session, workspace_id, agent_id)
+    trace.agent_id = agent.id
     if agent.status is not AgentStatus.ACTIVE:
-        raise ConflictError("Agent is not active")
+        raise ConflictError(AGENT_NOT_ACTIVE)
 
     try:
         intent = routing_provider.route(payload.request, agent.system_prompt)
@@ -170,6 +242,7 @@ def route_agent_request(
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     if type(intent) is not RoutingIntent:
         raise HTTPException(status_code=502, detail=ROUTING_PROVIDER_FAILURE)
+    trace.routing_intent = intent
 
     if intent is RoutingIntent.TOOL_REQUEST:
         try:
@@ -179,7 +252,7 @@ def route_agent_request(
                 agent_id=agent.id,
                 request=payload.request,
                 agent_scope=agent.system_prompt,
-                user_id=current_user.id,
+                user_id=current_user_id,
                 selector=tool_selector,
             )
         except ToolSelectionInputTooLargeError as exc:
@@ -187,15 +260,20 @@ def route_agent_request(
         except ToolSelectionConfigurationError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         except (ToolSelectionProviderError, ToolAdapterError) as exc:
+            if isinstance(exc, ToolAdapterError):
+                trace.tool_id = exc.tool_id
+                trace.tool_key = exc.tool_key
             raise HTTPException(status_code=502, detail=str(exc)) from exc
         except ToolRegistryConfigurationError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        _record_tool_outcome(trace, outcome)
         return ToolRouteResponse(
             request=payload.request,
             intent=RoutingIntent.TOOL_REQUEST,
             outcome=outcome,
         )
     if intent is RoutingIntent.UNSUPPORTED:
+        trace.outcome = ExecutionLogOutcome.UNSUPPORTED_REQUEST
         return UnsupportedRouteResponse(
             request=payload.request,
             intent=RoutingIntent.UNSUPPORTED,
@@ -210,8 +288,9 @@ def route_agent_request(
     knowledge_base = knowledge_base_service.get_knowledge_base(
         session, workspace_id, payload.knowledge_base_id
     )
+    trace.knowledge_base_id = knowledge_base.id
     if knowledge_base.status is not KnowledgeBaseStatus.ACTIVE:
-        raise ConflictError("Knowledge base is not active")
+        raise ConflictError(KNOWLEDGE_BASE_NOT_ACTIVE)
 
     try:
         embedding_provider = create_openai_embedding_provider(settings)
@@ -252,6 +331,7 @@ def route_agent_request(
             total_tokens=usage.total_tokens if usage is not None else None,
         ),
     )
+    record_grounded_answer(trace, answer)
     return KnowledgeRouteResponse(
         request=payload.request,
         intent=RoutingIntent.KNOWLEDGE_QA,

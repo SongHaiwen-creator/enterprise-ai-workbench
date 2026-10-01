@@ -141,7 +141,7 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     with postgres_engine.connect() as connection:
         migration_context = MigrationContext.configure(connection)
-        assert migration_context.get_current_revision() == "0009"
+        assert migration_context.get_current_revision() == "0010"
 
 
 def test_knowledge_base_migration_upgrades_and_downgrades(
@@ -642,6 +642,9 @@ APPLIED_MIGRATION_SHA256 = {
     "0008_create_tools_and_agent_tools.py": (
         "66f75aa0fda1ccaf63f19197ffafad3e4fbb383823ab29d564135a92b4e83cba"
     ),
+    "0009_create_approvals_and_mock_it_access_requests.py": (
+        "3506c2c397b9137c63b015c33e37f314d20cda599f2887462e3210b318bc1ad2"
+    ),
 }
 
 
@@ -651,8 +654,8 @@ def test_applied_migrations_are_unchanged_and_head_is_single() -> None:
         content = (versions / name).read_bytes().replace(b"\r\n", b"\n")
         assert hashlib.sha256(content).hexdigest() == expected, name
     script = ScriptDirectory.from_config(Config(str(BACKEND_ROOT / "alembic.ini")))
-    assert script.get_heads() == ["0009"]
-    assert script.get_revision("0009").down_revision == "0008"
+    assert script.get_heads() == ["0010"]
+    assert script.get_revision("0010").down_revision == "0009"
 
 
 def test_models_match_migrated_schema_without_drift(postgres_engine: Engine) -> None:
@@ -766,6 +769,102 @@ def test_approval_migration_upgrades_downgrades_and_reupgrades(
             assert {"approvals", "mock_it_access_requests"} <= set(
                 inspect(connection).get_table_names()
             )
+        finally:
+            connection.rollback()
+            command.upgrade(alembic_config, "head")
+
+
+def test_execution_log_migration_upgrades_downgrades_and_reupgrades(
+    postgres_engine: Engine,
+) -> None:
+    alembic_config = Config(str(BACKEND_ROOT / "alembic.ini"))
+
+    with postgres_engine.connect() as connection:
+        alembic_config.attributes["connection"] = connection
+        try:
+            command.downgrade(alembic_config, "0009")
+            inspector = inspect(connection)
+            assert "execution_logs" not in inspector.get_table_names()
+            assert {"approvals", "agents", "tools", "knowledge_bases"} <= set(
+                inspector.get_table_names()
+            )
+
+            command.upgrade(alembic_config, "0010")
+            inspector = inspect(connection)
+            columns = {
+                column["name"]: column for column in inspector.get_columns("execution_logs")
+            }
+            assert set(columns) == {
+                "id", "workspace_id", "user_id", "operation", "routing_intent", "status",
+                "outcome", "error_category", "http_status", "latency_ms", "agent_id",
+                "tool_id", "tool_key", "approval_id", "knowledge_base_id", "details",
+                "created_at",
+            }
+            nullable = {name for name, column in columns.items() if column["nullable"]}
+            assert nullable == {
+                "routing_intent", "outcome", "error_category", "agent_id", "tool_id",
+                "tool_key", "approval_id", "knowledge_base_id",
+            }
+            assert str(columns["details"]["type"]) == "JSONB"
+            assert "'{}'::jsonb" in columns["details"]["default"]
+            assert str(columns["http_status"]["type"]) == "SMALLINT"
+            assert columns["created_at"]["type"].timezone is True
+            assert columns["created_at"]["default"] == "CURRENT_TIMESTAMP"
+
+            foreign_keys = {
+                tuple(item["constrained_columns"]): (
+                    item["referred_table"],
+                    tuple(item["referred_columns"]),
+                    item["options"].get("ondelete"),
+                )
+                for item in inspector.get_foreign_keys("execution_logs")
+            }
+            assert foreign_keys == {
+                ("workspace_id",): ("workspaces", ("id",), "RESTRICT"),
+                ("user_id", "workspace_id"): (
+                    "memberships", ("user_id", "workspace_id"), "RESTRICT"
+                ),
+                ("agent_id", "workspace_id"): ("agents", ("id", "workspace_id"), "RESTRICT"),
+                ("tool_id", "workspace_id"): ("tools", ("id", "workspace_id"), "RESTRICT"),
+                ("approval_id", "workspace_id"): (
+                    "approvals", ("id", "workspace_id"), "RESTRICT"
+                ),
+                ("knowledge_base_id", "workspace_id"): (
+                    "knowledge_bases", ("id", "workspace_id"), "RESTRICT"
+                ),
+            }
+            indexes = {
+                index["name"]: index["column_names"]
+                for index in inspector.get_indexes("execution_logs")
+            }
+            assert indexes == {
+                "ix_execution_logs_workspace_created": ["workspace_id", "created_at", "id"],
+                "ix_execution_logs_workspace_agent_created": [
+                    "workspace_id", "agent_id", "created_at",
+                ],
+            }
+            checks = {
+                item["name"] for item in inspector.get_check_constraints("execution_logs")
+            }
+            assert checks == {
+                f"ck_execution_logs_{name}"
+                for name in (
+                    "operation_values", "routing_intent_values", "status_values",
+                    "outcome_values", "error_category_values", "http_status_range",
+                    "latency_non_negative", "status_error_consistency",
+                    "status_http_consistency", "routing_intent_agent_route_only",
+                    "tool_reference_pair", "details_object",
+                )
+            }
+            # Feature 014 does not change any existing table.
+            assert len(inspector.get_check_constraints("approvals")) == 24
+
+            command.downgrade(alembic_config, "0009")
+            inspector = inspect(connection)
+            assert "execution_logs" not in inspector.get_table_names()
+            assert "approvals" in inspector.get_table_names()
+            command.upgrade(alembic_config, "0010")
+            assert "execution_logs" in inspect(connection).get_table_names()
         finally:
             connection.rollback()
             command.upgrade(alembic_config, "head")

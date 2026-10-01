@@ -13,6 +13,7 @@ import {
   getCurrentUser,
   getWorkspace,
   listAgents,
+  listExecutionLogs,
   listKnowledgeBases,
   listWorkspaceMembers,
   listWorkspaces,
@@ -32,6 +33,7 @@ vi.mock("@/utils/api", async (importOriginal) => {
     listAgents: vi.fn(),
     listKnowledgeBases: vi.fn(),
     routeAgentRequest: vi.fn(),
+    listExecutionLogs: vi.fn(),
   };
 });
 
@@ -43,6 +45,7 @@ const mockedListWorkspaceMembers = vi.mocked(listWorkspaceMembers);
 const mockedListAgents = vi.mocked(listAgents);
 const mockedListKnowledgeBases = vi.mocked(listKnowledgeBases);
 const mockedRouteAgentRequest = vi.mocked(routeAgentRequest);
+const mockedListExecutionLogs = vi.mocked(listExecutionLogs);
 
 const workspaceItems: WorkspaceListItem[] = [
   {
@@ -194,6 +197,31 @@ describe("Workspace selection", () => {
     await user.click(screen.getByRole("button", { name: /Assistant.*Route a request/i }));
     expect(screen.getByRole("option", { name: "Beta Assistant" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Alpha Assistant" })).not.toBeInTheDocument();
+  });
+
+  it("shows Execution Logs only to agent and system administrators", async () => {
+    const adminWorkspace = { ...workspaceItems[0], role: "agent_admin" as const };
+    mockedListWorkspaces.mockResolvedValue([adminWorkspace, workspaceItems[1]]);
+    mockedGetWorkspace.mockImplementation(async (workspaceId) =>
+      workspace(workspaceId === "workspace-a" ? adminWorkspace : workspaceItems[1]),
+    );
+    mockedListKnowledgeBases.mockResolvedValue([]);
+    mockedListExecutionLogs.mockResolvedValue({ items: [], limit: 50, offset: 0 });
+
+    const user = await signIn();
+    const logsLink = await screen.findByRole("button", { name: /Execution Logs.*AI traceability/i });
+    await user.click(logsLink);
+    expect(await screen.findByRole("heading", { name: "Execution logs" })).toBeInTheDocument();
+    expect(mockedListExecutionLogs).toHaveBeenCalledWith("workspace-a", {}, 50, 0, "test-token");
+
+    await user.click(screen.getByRole("button", { name: /Workspace B/i }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /Execution Logs.*AI traceability/i }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("heading", { name: "Execution logs" })).not.toBeInTheDocument();
+    expect(mockedListExecutionLogs).toHaveBeenCalledTimes(1);
   });
 
   it("keeps Knowledge Q&A and Workspace available when Agent listing fails", async () => {

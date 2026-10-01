@@ -1,6 +1,6 @@
 # Feature 013 - Human Approval
 
-Status: Implemented in Phase B (pending independent review and human merge); Phase A specification (revision 3, H1-H3) approved
+Status: Implemented - merged into main (PR #31); Phase A specification (revision 3, H1-H3) approved
 Milestone: 3
 Baseline: `main` at `f57cb8e` (Features 001-012 merged; Alembic head `0008`)
 Risk class: High (`AGENTS.md` Review Policy: authorization, tenant isolation,

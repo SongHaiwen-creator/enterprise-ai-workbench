@@ -168,7 +168,7 @@ and allow employees to retrieve authorized information.
 
 # 5. Milestone 3 - Agent & Enterprise Tools
 
-Status: In Progress (Features 011-012 merged; Feature 013 Human Approval in review)
+Status: Baseline delivered (Features 011-013 merged)
 
 Goal:
 
@@ -215,13 +215,14 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 - High-risk actions create approval requests
 - High-risk tools cannot execute before approval
 - Tool execution creates logs (write-sensitive executions are recorded as Feature 013
-  Approval lifecycle facts; generic execution logs are Milestone 4 / Feature 014)
+  Approval lifecycle facts; Feature 014 execution logs record every Agent request,
+  including read-only Tool executions)
 
 ---
 
 # 6. Milestone 4 - Logs, Evaluation & Bad Cases
 
-Status: Not Started
+Status: In Progress (Feature 014 Execution Logs implemented; in review)
 
 Goal:
 

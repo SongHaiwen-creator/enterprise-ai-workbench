@@ -2,10 +2,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
-from app.api.dependencies.auth import DatabaseSession
+from app.api.dependencies.auth import CurrentUser, DatabaseSession
 from app.api.dependencies.authorization import ActiveWorkspaceMembership
 from app.api.dependencies.embeddings import ConfiguredEmbeddingProvider
 from app.api.dependencies.generation import ConfiguredGenerationProvider
+from app.models.enums import ExecutionLogOperation
 from app.schemas.answer import (
     GenerationMetadata,
     GroundedAnswerRequest,
@@ -15,6 +16,7 @@ from app.schemas.answer import (
 from app.schemas.common import ErrorResponse
 from app.services import answers as answer_service
 from app.services.embeddings import EmbeddingProviderError
+from app.services.execution_logs import execution_log, record_grounded_answer
 from app.services.generation import (
     GenerationConfigurationError,
     GenerationInputTooLargeError,
@@ -48,44 +50,54 @@ def answer_knowledge_question(
     payload: GroundedAnswerRequest,
     session: DatabaseSession,
     _membership: ActiveWorkspaceMembership,
+    current_user: CurrentUser,
     embedding_provider: ConfiguredEmbeddingProvider,
     generation_provider: ConfiguredGenerationProvider,
 ) -> GroundedAnswerResponse:
-    try:
-        result = answer_service.answer_question(
-            session,
-            workspace_id,
-            knowledge_base_id,
-            payload.question,
-            embedding_provider,
-            generation_provider,
-        )
-    except GenerationInputTooLargeError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except GenerationConfigurationError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except (EmbeddingProviderError, GenerationProviderError) as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    with execution_log(
+        session,
+        workspace_id=workspace_id,
+        user_id=current_user.id,
+        operation=ExecutionLogOperation.KNOWLEDGE_ANSWER,
+    ) as trace:
+        trace.knowledge_base_id = knowledge_base_id
+        try:
+            result = answer_service.answer_question(
+                session,
+                workspace_id,
+                knowledge_base_id,
+                payload.question,
+                embedding_provider,
+                generation_provider,
+            )
+        except GenerationInputTooLargeError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except GenerationConfigurationError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except (EmbeddingProviderError, GenerationProviderError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    usage = result.usage
-    return GroundedAnswerResponse(
-        question=result.question,
-        status=result.status,
-        answer=result.answer,
-        message=result.message,
-        citations=[
-            GroundedCitation.model_validate(citation, from_attributes=True)
-            for citation in result.citations
-        ],
-        generation=GenerationMetadata(
-            model=generation_provider.model,
-            reasoning_effort=generation_provider.reasoning_effort,
-            retrieval_limit=generation_provider.retrieval_limit,
-            prompt_version=generation_provider.prompt_version,
-            max_input_tokens=generation_provider.max_input_tokens,
-            max_output_tokens=generation_provider.max_output_tokens,
-            input_tokens=usage.input_tokens if usage is not None else None,
-            output_tokens=usage.output_tokens if usage is not None else None,
-            total_tokens=usage.total_tokens if usage is not None else None,
-        ),
-    )
+        usage = result.usage
+        answer = GroundedAnswerResponse(
+            question=result.question,
+            status=result.status,
+            answer=result.answer,
+            message=result.message,
+            citations=[
+                GroundedCitation.model_validate(citation, from_attributes=True)
+                for citation in result.citations
+            ],
+            generation=GenerationMetadata(
+                model=generation_provider.model,
+                reasoning_effort=generation_provider.reasoning_effort,
+                retrieval_limit=generation_provider.retrieval_limit,
+                prompt_version=generation_provider.prompt_version,
+                max_input_tokens=generation_provider.max_input_tokens,
+                max_output_tokens=generation_provider.max_output_tokens,
+                input_tokens=usage.input_tokens if usage is not None else None,
+                output_tokens=usage.output_tokens if usage is not None else None,
+                total_tokens=usage.total_tokens if usage is not None else None,
+            ),
+        )
+        record_grounded_answer(trace, answer)
+        return answer
