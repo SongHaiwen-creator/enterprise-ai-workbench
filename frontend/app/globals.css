@@ -466,3 +466,11 @@ td select { min-width: 9rem; min-height: 2.25rem; font-size: 0.76rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+/* Evaluation administration uses the existing Workspace forms and cards. */
+.evaluation-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.evaluation-form { display: grid; gap: 12px; border: 1px solid #d5dfdc; border-radius: 12px; padding: 16px; }
+.evaluation-form label { display: grid; gap: 6px; }
+.evaluation-form input, .evaluation-form select, .evaluation-form textarea { width: 100%; padding: 10px; border: 1px solid #b8c9c3; border-radius: 8px; }
+.evaluation-form textarea { min-height: 90px; resize: vertical; }
+.evaluation-columns li { margin-bottom: 8px; overflow-wrap: anywhere; }
+@media (max-width: 850px) { .evaluation-columns { grid-template-columns: 1fr; } }

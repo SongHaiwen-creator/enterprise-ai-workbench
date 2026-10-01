@@ -1,6 +1,6 @@
 # Feature 015 - Evaluation Dataset
 
-Status: Phase A proposal; awaiting explicit human approval before Phase B
+Status: Phase B implemented; pending independent review and human merge (PR #35)
 Milestone: 4 (in progress)
 Baseline: `main` at `760d7fb315993b52835a5a5ff019adaa200dbe13`
 Branch: `feat/evaluation-dataset`
@@ -15,10 +15,10 @@ and cases for later automated evaluation. Feature 015 manages definitions only.
 It never executes an Agent, calls a provider or Tool, creates an Approval,
 computes metrics, or claims that a case passed.
 
-This Phase A delivers a specification, tracking Issue, documentation commit,
+The initial Phase A delivered a specification, tracking Issue, documentation commit,
 and Phase-A-only PR. No application/test code, migration file, runtime database
-changes, or new dependencies are authorized in this phase. Phase B requires
-explicit approval of Section 14. Feature 016 requires a separate design and
+changes, or new dependencies were authorized in that phase. Phase B was explicitly
+approved on 2026-10-01 against commit `a55f634` (H1-H5). Feature 016 requires a separate design and
 development thread.
 
 ## 2. Read-only baseline verification (2026-10-01)
@@ -45,7 +45,7 @@ models, migration chain, PostgreSQL fixtures, and existing benchmark tests.
 
 ## 3. Scope and existing patterns
 
-Proposed Phase B scope:
+Approved and implemented Phase B scope:
 
 - Workspace-owned Dataset and Case create, list, detail, edit, disable/reactivate.
 - Exactly four case types: `knowledge_qa`, `tool_calling`,
@@ -67,7 +67,7 @@ composite constraints used by Agent Tools, Approvals and Execution Logs.
 proposal refines its flat Case/Agent model into Dataset -> Case, makes Agent
 context optional to support reusable datasets, and replaces free-form expected
 text with typed JSONB. Update that section and the Workspace hierarchy in Phase
-B after approval, together with the implemented schema. No architecture or
+B together with the implemented schema. No architecture or
 existing authentication redesign is proposed.
 
 ## 4. Product and business rules (H4)
@@ -342,9 +342,9 @@ validation handler that does not serialize either. Do not change validation
 responses for existing routes. Failed reference checks or writes roll back;
 unexpected persistence errors expose no SQL, parameters or exception text.
 
-## 9. Migration 0011 proposal (H1; not created)
+## 9. Migration 0011 (H1 approved; implemented)
 
-Propose additive revision `0011`, `down_revision = "0010"`, creating only the
+Additive revision `0011`, `down_revision = "0010"`, creates only the
 two tables, keys, checks and indexes in Section 5. Revisions `0001`-`0010`
 remain byte-for-byte unchanged. No seed data, backfill, extension, trigger,
 existing-table change or runtime migration is proposed.
@@ -460,7 +460,10 @@ complete until Phase B verification and review pass and a human merges the PR.
 
 ## 14. Explicit human decisions and approval gate
 
-All decisions remain **pending**; recommendations are not approval.
+H1-H5 were explicitly approved by the maintainer on 2026-10-01 against the
+Phase A baseline `a55f634`. The following recommendations were accepted. The
+additional requirement to sanitize at the actual FastAPI validation boundary
+and test all sensitive-output channels is implemented in `EvaluationRoute`.
 
 | ID | Decision requiring approval | Recommendation |
 |---|---|---|
@@ -476,7 +479,7 @@ dedicated-test-database verification. It does not authorize runtime migrations,
 production-sensitive content, destructive runtime operations, any change to
 existing authentication/Approval policy, external platform integration,
 Feature 016, or merging into `main`. Independent review remains required
-before a human merge. Stop at this Phase A PR until approval is received.
+before a human merge. Phase B stops at PR-ready implementation for independent review.
 
 ## 15. Out of scope
 
@@ -493,9 +496,36 @@ before a human merge. Stop at this Phase A PR until approval is received.
 
 ## 16. Tracking and lifecycle
 
-- Issue: [#34](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/34); remains open because Phase A is not delivery.
-- PR: Phase A only, targeting `main`; no `Closes` directive until the feature
-  implementation is delivered by an appropriate PR.
-- Phase B status: not started; explicit H1-H5 approval required.
+- Issue: [#34](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/34); remains open until feature delivery by human merge.
+- PR: [#35](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/35),
+  targeting `main`; updated for the implementation with `Closes #34`.
+- Phase B status: implemented under H1-H5 approval; independent review pending.
 - Feature 014 is merged/delivered; Milestone 4 remains in progress. Feature 015
   is the next unfinished feature, and Feature 016 is not started here.
+
+## 17. Implementation and verification record
+
+- `app/models/evaluation.py` and additive `0011` implement the two tables.
+- `app/schemas/evaluation.py` validates all four typed expectation categories;
+  `app/services/evaluation.py` owns scoped lookups, reference checks, locks,
+  atomic merged PATCH and commits. Five-second lock timeout is sanitized.
+- `app/api/routes/evaluation.py` defines eight authorized endpoints using an
+  Evaluation-only `APIRoute` wrapper around FastAPI's generated handler. It
+  catches pre-handler `RequestValidationError` and merged-state errors without
+  logging or serializing their content; existing routers are unchanged.
+- The frontend uses typed category forms and authorized resource selectors,
+  literal input rendering, disable/reactivate, list pagination, safe errors,
+  duplicate-write guards and complete content remount on Workspace/session change.
+- Runtime database untouched; all PostgreSQL/migration verification uses
+  `enterprise_ai_workbench_test`. Existing migrations are checked against the
+  main baseline by Git object and SHA-256 comparisons.
+- No new dependency, provider/execution path or Feature 016 code was added.
+- Accepted MVP risks remain Section 11: plaintext confidential synthetic data,
+  disabling retains content, no DLP/purge/history or optimistic concurrency.
+- Verification: 153 Feature 015 backend tests (68 unit, 85 PostgreSQL integration);
+  full backend `pytest -q -p no:cacheprovider`: 972 passed, no skips. Full frontend
+  `pnpm test`: 9 API tests and 81 Vitest tests passed (including 23 Feature 015
+  tests across forms, client contracts and role-gated navigation). Ruff,
+  `pnpm lint`, `pnpm build`, and `git diff --check` passed. Existing Starlette
+  and Alembic deprecation warnings remain. Independent review remains
+  outstanding; no merge is authorized.

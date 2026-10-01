@@ -223,7 +223,8 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 # 6. Milestone 4 - Logs, Evaluation & Bad Cases
 
 Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
-Feature 015 Evaluation Dataset in Phase A, awaiting human approval)
+Feature 015 Evaluation Dataset implemented on PR #35, pending independent
+review and human merge)
 
 Goal:
 
@@ -246,8 +247,10 @@ Record:
 ### Evaluation Dataset
 
 Feature 015 covers Workspace-owned dataset and case management only. Its
-Phase A proposal is in `docs/features/015-evaluation-dataset.md`; no
-implementation or migration is authorized until explicit human approval.
+approved specification is in `docs/features/015-evaluation-dataset.md`.
+Phase B implements typed Dataset/Case CRUD, administrative UI, and additive
+migration `0011`, verified only on the dedicated test database. Delivery remains
+pending independent review and human merge of PR #35.
 Evaluation execution and metrics are reserved for Feature 016.
 
 Support evaluation cases for:
