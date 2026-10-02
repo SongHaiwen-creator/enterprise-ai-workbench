@@ -245,6 +245,8 @@ To be decided after local MVP is stable
 
 ## 11. Evaluation Definition Management (Feature 015)
 
+Status: merged/delivered in PR #35 on 2026-10-02; Issue #34 closed.
+
 Workspace -> EvaluationDataset -> EvaluationCase is an administrative CRUD
 surface, separate from the AI execution layer. Same-Workspace `agent_admin`
 and `system_admin` use typed frontend forms and eight backend list/detail/
@@ -268,4 +270,20 @@ unlike the metadata-only Execution Logs. There is no provider call, Tool
 dispatch, Approval, execution-log recorder, evaluation run, metric, scoring,
 external transfer or background job. Disable retains content. Execution,
 identity fixture construction and data egress require a separate Feature 016
-design. Migration `0011` is additive; runtime migration is not authorized.
+design. Migration `0011` is the repository head; this makes no guarantee about
+runtime database state.
+
+## 12. Evaluation Run & Metrics (Feature 016 proposal)
+
+Phase A only; no runner, migration `0012` or architecture refactor is implemented.
+The proposal in `docs/features/016-evaluation-run-metrics.md` requires H1-H7
+approval before Phase B. It recommends bounded sequential synchronous runs,
+Workspace-owned immutable Case/config snapshots, structured PASS/FAIL/ERROR
+comparisons and derived metrics. ERROR is separate from behavioral failure.
+
+Routing and read-only RAG protocols may be reused, while a shared non-mutating
+Tool plan must stop before any adapter or Approval operation. Permission Cases
+would evaluate narrow shared policy predicates using inert facts, never runtime
+identities. Current authorization remains authoritative. Confidential provider
+input/evidence transfer requires a separately approved data-egress boundary.
+No worker, framework, semantic judge or next-roadmap feature is proposed.

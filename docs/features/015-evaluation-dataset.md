@@ -1,6 +1,6 @@
 # Feature 015 - Evaluation Dataset
 
-Status: Phase B implemented; pending independent review and human merge (PR #35)
+Status: Implemented - merged/delivered into main (PR #35, 2026-10-02); Issue #34 closed
 Milestone: 4 (in progress)
 Baseline: `main` at `760d7fb315993b52835a5a5ff019adaa200dbe13`
 Branch: `feat/evaluation-dataset`
@@ -496,12 +496,13 @@ before a human merge. Phase B stops at PR-ready implementation for independent r
 
 ## 16. Tracking and lifecycle
 
-- Issue: [#34](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/34); remains open until feature delivery by human merge.
+- Issue: [#34](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/34); closed after human merge on 2026-10-02.
 - PR: [#35](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/35),
   targeting `main`; updated for the implementation with `Closes #34`.
-- Phase B status: implemented under H1-H5 approval; independent review pending.
-- Feature 014 is merged/delivered; Milestone 4 remains in progress. Feature 015
-  is the next unfinished feature, and Feature 016 is not started here.
+- Phase B status: implemented under H1-H5 approval and delivered by merge of PR #35
+  at `5c829ab45c9399c6dd6efcab3526f30004224cec` on 2026-10-02.
+- Features 014 and 015 are merged/delivered; Milestone 4 remains in progress.
+  Feature 016 is the next unfinished feature, with Phase A in a separate thread.
 
 ## 17. Implementation and verification record
 
@@ -535,5 +536,5 @@ before a human merge. Phase B stops at PR-ready implementation for independent r
   `pnpm test`: 9 API tests and 81 Vitest tests passed (including 23 Feature 015
   tests across forms, client contracts and role-gated navigation). Ruff,
   `pnpm lint`, `pnpm build`, and `git diff --check` passed. Existing Starlette
-  and Alembic deprecation warnings remain. Independent review remains
-  outstanding; no merge is authorized.
+  and Alembic deprecation warnings remain. This verification record predates
+  the human merge; the delivered status and merge evidence are recorded above.
