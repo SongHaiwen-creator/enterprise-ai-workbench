@@ -513,6 +513,13 @@ before a human merge. Phase B stops at PR-ready implementation for independent r
   Evaluation-only `APIRoute` wrapper around FastAPI's generated handler. It
   catches pre-handler `RequestValidationError` and merged-state errors without
   logging or serializing their content; existing routers are unchanged.
+- Review remediation: Evaluation writes roll back SQLAlchemy persistence
+  exceptions, including non-DBAPI `StatementError`, and emit only the fixed
+  persistence error. Business errors and lock-timeout conflicts retain their
+  existing contracts. The route boundary also sanitizes manual Pydantic
+  response validation failures as fixed 500 errors. FastAPI's body-parsing 400
+  caused by `UnicodeDecodeError` alone becomes the fixed 422; authentication
+  and business HTTP exceptions retain their original status and handling.
 - The frontend uses typed category forms and authorized resource selectors,
   literal input rendering, disable/reactivate, list pagination, safe errors,
   duplicate-write guards and complete content remount on Workspace/session change.
@@ -522,8 +529,9 @@ before a human merge. Phase B stops at PR-ready implementation for independent r
 - No new dependency, provider/execution path or Feature 016 code was added.
 - Accepted MVP risks remain Section 11: plaintext confidential synthetic data,
   disabling retains content, no DLP/purge/history or optimistic concurrency.
-- Verification: 153 Feature 015 backend tests (68 unit, 85 PostgreSQL integration);
-  full backend `pytest -q -p no:cacheprovider`: 972 passed, no skips. Full frontend
+- Verification after review remediation: 5 targeted regression tests passed;
+  158 Feature 015 backend tests (68 unit, 90 PostgreSQL integration);
+  full backend `pytest -q -p no:cacheprovider`: 977 passed, no skips. Full frontend
   `pnpm test`: 9 API tests and 81 Vitest tests passed (including 23 Feature 015
   tests across forms, client contracts and role-gated navigation). Ruff,
   `pnpm lint`, `pnpm build`, and `git diff --check` passed. Existing Starlette

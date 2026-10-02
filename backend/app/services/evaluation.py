@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 from sqlalchemy import select, text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models import Agent, EvaluationCase, EvaluationDataset, KnowledgeBase, Tool
@@ -121,9 +121,9 @@ def _save(session: Session, row):
     return row
 
 
-def _write_error(session: Session, error: DBAPIError) -> None:
+def _write_error(session: Session, error: SQLAlchemyError) -> None:
     session.rollback()
-    if getattr(error.orig, "sqlstate", None) == "55P03":
+    if isinstance(error, DBAPIError) and getattr(error.orig, "sqlstate", None) == "55P03":
         raise ConflictError("Evaluation resource is busy") from None
     # Never expose SQL, bound input or the original driver exception.
     raise EvaluationPersistenceError("Evaluation persistence unavailable") from None
@@ -137,7 +137,7 @@ def create_dataset(session: Session, workspace_id: UUID, creator: UUID, payload:
                 workspace_id=workspace_id, created_by=creator, **payload.model_dump()
             ),
         )
-    except DBAPIError as error:
+    except SQLAlchemyError as error:
         _write_error(session, error)
 
 
@@ -149,7 +149,7 @@ def update_dataset(session: Session, workspace_id: UUID, dataset_id: UUID, paylo
         # Even a repeated status PATCH records its successful update time.
         row.updated_at = session.scalar(select(text("clock_timestamp()")))
         return _save(session, row)
-    except DBAPIError as error:
+    except SQLAlchemyError as error:
         _write_error(session, error)
 
 
@@ -170,7 +170,7 @@ def create_case(
                 **payload.model_dump(mode="python"),
             ),
         )
-    except DBAPIError as error:
+    except SQLAlchemyError as error:
         _write_error(session, error)
 
 
@@ -193,5 +193,5 @@ def update_case(
             row.status = changes["status"]
         row.updated_at = session.scalar(select(text("clock_timestamp()")))
         return _save(session, row)
-    except DBAPIError as error:
+    except SQLAlchemyError as error:
         _write_error(session, error)

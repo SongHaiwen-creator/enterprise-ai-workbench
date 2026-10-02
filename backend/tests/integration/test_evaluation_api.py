@@ -5,8 +5,10 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
+from sqlalchemy.exc import DBAPIError, StatementError
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
@@ -427,3 +429,115 @@ def test_pagination_filters(client, db_session, scenario):
     )
     for query in ({"limit": 0}, {"limit": 101}, {"offset": -1}, {"status": "future"}):
         assert client.get(collection, params=query, headers=headers).status_code == 422
+
+
+def assert_boundary_sentinel_absent(response, db_session, workspace_id, caplog, capsys):
+    assert SENTINEL not in response.text
+    assert SENTINEL not in caplog.text
+    output = capsys.readouterr()
+    assert SENTINEL not in output.out + output.err
+    assert (
+        db_session.scalar(
+            select(func.count())
+            .select_from(ExecutionLog)
+            .where(ExecutionLog.workspace_id == workspace_id)
+        )
+        == 0
+    )
+    assert SENTINEL not in json.dumps(
+        [row.details for row in db_session.scalars(select(ExecutionLog))]
+    )
+
+
+def test_patch_statement_error_rolls_back_and_is_sanitized(
+    client, db_session, scenario, monkeypatch, caplog, capsys
+):
+    _, workspace, _, parent, child, headers = scenario
+    url = paths(workspace, parent, child)[3]
+    child_id, workspace_id = child.id, workspace.id
+    original = (child.name, child.test_input, child.updated_at)
+    rollback = db_session.rollback
+    rollbacks = []
+
+    def tracked_rollback():
+        rollbacks.append(True)
+        rollback()
+
+    def failing_commit():
+        assert child.name == "Changed"
+        assert child.test_input == SENTINEL
+        error = StatementError(
+            SENTINEL,
+            f"UPDATE evaluation_cases {SENTINEL}",
+            {"test_input": SENTINEL},
+            ValueError(SENTINEL),
+        )
+        assert not isinstance(error, DBAPIError)
+        raise error
+
+    monkeypatch.setattr(db_session, "rollback", tracked_rollback)
+    monkeypatch.setattr(db_session, "commit", failing_commit)
+    try:
+        response = client.patch(
+            url, json={"name": "Changed", "test_input": SENTINEL}, headers=headers
+        )
+    except Exception as error:
+        assert SENTINEL not in repr(error) + traceback.format_exc()
+        raise
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Evaluation persistence unavailable"}
+    assert rollbacks == [True]
+    assert not db_session.in_transaction()
+    db_session.expire_all()
+    persisted = db_session.get(EvaluationCase, child_id)
+    assert (persisted.name, persisted.test_input, persisted.updated_at) == original
+    assert_boundary_sentinel_absent(response, db_session, workspace_id, caplog, capsys)
+
+
+def test_invalid_utf8_json_is_sanitized(client, db_session, scenario, caplog, capsys):
+    _, workspace, _, parent, child, headers = scenario
+    try:
+        response = client.post(
+            paths(workspace, parent, child)[2],
+            content=b'{"name":"' + SENTINEL.encode() + b'\xff"}',
+            headers={**headers, "Content-Type": "application/json"},
+        )
+    except Exception as error:
+        assert SENTINEL not in repr(error) + traceback.format_exc()
+        raise
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid evaluation request"}
+    assert_boundary_sentinel_absent(response, db_session, workspace.id, caplog, capsys)
+
+
+def test_business_body_parsing_http_error_is_preserved(client, scenario, monkeypatch):
+    _, workspace, _, parent, child, headers = scenario
+
+    def business_error(*args, **kwargs):
+        raise HTTPException(status_code=400, detail="There was an error parsing the body")
+
+    monkeypatch.setattr(evaluation, "list_datasets", business_error)
+    response = client.get(paths(workspace, parent, child)[0], headers=headers)
+    assert response.status_code == 400
+    assert response.json() == {"detail": "There was an error parsing the body"}
+
+
+@pytest.mark.parametrize("pattern", ["dataset", "case"])
+def test_invalid_persisted_list_row_is_sanitized(
+    client, db_session, scenario, pattern, caplog, capsys
+):
+    _, workspace, _, parent, child, headers = scenario
+    row = parent if pattern == "dataset" else child
+    row.name = "\t"  # PostgreSQL btrim accepts this; Pydantic strip rejects it.
+    row.description = SENTINEL
+    db_session.commit()
+    db_session.expire_all()
+    index = 0 if pattern == "dataset" else 2
+    try:
+        response = client.get(paths(workspace, parent, child)[index], headers=headers)
+    except Exception as error:
+        assert SENTINEL not in repr(error) + traceback.format_exc()
+        raise
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Evaluation persistence unavailable"}
+    assert_boundary_sentinel_absent(response, db_session, workspace.id, caplog, capsys)

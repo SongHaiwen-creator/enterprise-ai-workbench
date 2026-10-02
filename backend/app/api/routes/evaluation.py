@@ -6,7 +6,9 @@ from fastapi import APIRouter, Query, Request, Response
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from sqlalchemy.exc import DBAPIError
+from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
+from starlette.exceptions import HTTPException
 
 from app.api.dependencies.auth import CurrentUser, DatabaseSession
 from app.api.dependencies.authorization import AgentAdministratorMembership
@@ -44,7 +46,24 @@ class EvaluationRoute(APIRoute):
                 return JSONResponse(
                     status_code=422, content={"detail": "Invalid evaluation request"}
                 )
-            except (ResponseValidationError, DBAPIError, service.EvaluationPersistenceError):
+            except HTTPException as error:
+                # FastAPI wraps JSON UnicodeDecodeError before dependency resolution.
+                # Match that parsing failure only; preserve auth and business errors.
+                if (
+                    error.status_code == 400
+                    and error.detail == "There was an error parsing the body"
+                    and isinstance(error.__cause__, UnicodeDecodeError)
+                ):
+                    return JSONResponse(
+                        status_code=422, content={"detail": "Invalid evaluation request"}
+                    )
+                raise
+            except (
+                ResponseValidationError,
+                ValidationError,
+                SQLAlchemyError,
+                service.EvaluationPersistenceError,
+            ):
                 return JSONResponse(
                     status_code=500, content={"detail": "Evaluation persistence unavailable"}
                 )
