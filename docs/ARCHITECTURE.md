@@ -97,6 +97,7 @@ Responsibilities:
 - Conversations
 - Execution logs
 - Evaluation cases
+- Evaluation datasets
 
 Vector search will use pgvector.
 
@@ -241,3 +242,30 @@ Git + GitHub
 
 Deployment:
 To be decided after local MVP is stable
+
+## 11. Evaluation Definition Management (Feature 015)
+
+Workspace -> EvaluationDataset -> EvaluationCase is an administrative CRUD
+surface, separate from the AI execution layer. Same-Workspace `agent_admin`
+and `system_admin` use typed frontend forms and eight backend list/detail/
+create/PATCH endpoints. Current backend Membership checks authorize every
+request; scoped queries and composite foreign keys isolate Dataset, Case,
+creator and optional Agent/Knowledge Base/Tool references.
+
+The Evaluation router uses a custom `APIRoute` around FastAPI's generated
+handler to return the fixed `422` body before malformed body/path/query
+validation can escape. It never serializes validation input, exception context,
+SQL parameters or request content into errors or logs. This wrapper applies
+only to Evaluation routes; existing validation contracts are unchanged.
+
+Services serialize Case creation with Dataset status changes on the parent
+row and merge Case PATCH against a freshly locked row. Five-second lock
+timeout returns a sanitized `409` and rolls back. References and actor labels
+are test definitions, never authorization or execution grants.
+
+Cases contain synthetic/redacted Workspace-confidential input in PostgreSQL,
+unlike the metadata-only Execution Logs. There is no provider call, Tool
+dispatch, Approval, execution-log recorder, evaluation run, metric, scoring,
+external transfer or background job. Disable retains content. Execution,
+identity fixture construction and data egress require a separate Feature 016
+design. Migration `0011` is additive; runtime migration is not authorized.

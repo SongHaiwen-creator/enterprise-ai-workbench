@@ -5,6 +5,7 @@ import { FormEvent, useRef, useState } from "react";
 import { Approvals } from "@/app/components/approvals";
 import { Assistant } from "@/app/components/assistant";
 import { ExecutionLogs } from "@/app/components/execution-logs";
+import { EvaluationDatasets } from "@/app/components/evaluation-datasets";
 import type { AgentsLoadFailure } from "@/app/components/assistant";
 import { KnowledgeQA } from "@/app/components/knowledge-qa";
 import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
@@ -41,7 +42,7 @@ const ROLES: MembershipRole[] = [
 const STATUSES: MembershipStatus[] = ["invited", "active", "disabled"];
 
 type Notice = { tone: "success" | "error"; message: string } | null;
-type ProductArea = "assistant" | "knowledge-qa" | "approvals" | "execution-logs" | "workspace";
+type ProductArea = "assistant" | "knowledge-qa" | "approvals" | "execution-logs" | "evaluation-datasets" | "workspace";
 
 export default function Home() {
   const [email, setEmail] = useState("");
@@ -76,7 +77,7 @@ export default function Home() {
   const canViewExecutionLogs =
     selectedWorkspace?.role === "system_admin" || selectedWorkspace?.role === "agent_admin";
   const productArea: ProductArea =
-    requestedProductArea === "execution-logs" && !canViewExecutionLogs
+    (requestedProductArea === "execution-logs" || requestedProductArea === "evaluation-datasets") && !canViewExecutionLogs
       ? "workspace"
       : requestedProductArea;
 
@@ -439,6 +440,18 @@ export default function Home() {
           {canViewExecutionLogs && (
             <button
               type="button"
+              className={productArea === "evaluation-datasets" ? "product-link active" : "product-link"}
+              onClick={() => setProductArea("evaluation-datasets")}
+              disabled={qaPending}
+              aria-current={productArea === "evaluation-datasets" ? "page" : undefined}
+            >
+              <span className="product-icon" aria-hidden="true">▤</span>
+              <span><strong>Evaluation Datasets</strong><small>Reusable cases</small></span>
+            </button>
+          )}
+          {canViewExecutionLogs && (
+            <button
+              type="button"
               className={productArea === "execution-logs" ? "product-link active" : "product-link"}
               onClick={() => setProductArea("execution-logs")}
               disabled={qaPending}
@@ -476,9 +489,9 @@ export default function Home() {
         <header className="topbar">
           <div>
             <p className="section-kicker">
-              {productArea === "assistant" ? "Workspace / Agent" : productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : productArea === "approvals" ? "Workspace / Human approval" : productArea === "execution-logs" ? "Workspace / Traceability" : "Workspace administration"}
+              {productArea === "assistant" ? "Workspace / Agent" : productArea === "knowledge-qa" ? "Workspace / Knowledge Base" : productArea === "approvals" ? "Workspace / Human approval" : productArea === "execution-logs" ? "Workspace / Traceability" : productArea === "evaluation-datasets" ? "Workspace / Evaluation datasets" : "Workspace administration"}
             </p>
-            <h1>{productArea === "assistant" ? "Assistant" : productArea === "knowledge-qa" ? "Knowledge Q&A" : productArea === "approvals" ? "Approvals" : productArea === "execution-logs" ? "Execution Logs" : selectedWorkspace?.name ?? "Workspaces"}</h1>
+            <h1>{productArea === "assistant" ? "Assistant" : productArea === "knowledge-qa" ? "Knowledge Q&A" : productArea === "approvals" ? "Approvals" : productArea === "execution-logs" ? "Execution Logs" : productArea === "evaluation-datasets" ? "Evaluation Datasets" : selectedWorkspace?.name ?? "Workspaces"}</h1>
             {productArea !== "workspace" && selectedWorkspace && (
               <p className="topbar-context">{selectedWorkspace.name}</p>
             )}
@@ -553,6 +566,14 @@ export default function Home() {
               accessToken={accessToken}
               onUnauthorized={() => clearSession("Your session expired. Sign in again to continue.")}
               onPendingChange={setQaPending}
+            />
+          ) : workspace && selectedWorkspace && productArea === "evaluation-datasets" ? (
+            <EvaluationDatasets
+              key={workspace.id}
+              workspaceId={workspace.id}
+              workspaceName={workspace.name}
+              accessToken={accessToken}
+              onUnauthorized={() => clearSession("Your session expired. Sign in again to continue.")}
             />
           ) : workspace && selectedWorkspace && productArea === "execution-logs" ? (
             <ExecutionLogs

@@ -224,6 +224,21 @@ describe("Workspace selection", () => {
     expect(mockedListExecutionLogs).toHaveBeenCalledTimes(1);
   });
 
+  it.each(["employee", "knowledge_admin", "agent_admin", "system_admin"] as const)(
+    "gates Evaluation Dataset navigation for %s", async role => {
+      const selected = { ...workspaceItems[0], role };
+      mockedListWorkspaces.mockResolvedValue([selected]);
+      mockedGetWorkspace.mockResolvedValue(workspace(selected));
+      mockedListKnowledgeBases.mockResolvedValue([]);
+      await signIn();
+      await screen.findByRole("button", { name: "Sign out" });
+      await waitFor(() => expect(mockedGetWorkspace).toHaveBeenCalled());
+      const navigation = screen.queryByRole("button", { name: /Evaluation Datasets.*Reusable cases/i });
+      if (role === "agent_admin" || role === "system_admin") expect(navigation).toBeInTheDocument();
+      else expect(navigation).not.toBeInTheDocument();
+    },
+  );
+
   it("keeps Knowledge Q&A and Workspace available when Agent listing fails", async () => {
     mockedListWorkspaces.mockResolvedValue([workspaceItems[0]]);
     mockedGetWorkspace.mockResolvedValue(workspace(workspaceItems[0]));

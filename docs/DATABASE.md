@@ -39,7 +39,8 @@ Workspace
 ├── Approval
 ├── Conversation
 ├── ExecutionLog
-└── EvaluationCase
+└── EvaluationDataset
+    └── EvaluationCase
 
 KnowledgeBase
 ↓
@@ -487,27 +488,63 @@ implemented yet.
 
 ---
 
-# 15. Evaluation Case
+# 15. Evaluation Dataset and Case
 
-Represents an AI evaluation test case.
+Feature 015 stores reusable definitions only. Revision `0011`, after `0010`,
+creates exactly `evaluation_datasets` and `evaluation_cases`; existing tables
+and revisions `0001`-`0010` remain unchanged.
 
-Table: evaluation_cases
-
-Fields:
+## 15.1 Evaluation Dataset
 
 | Field | Type | Description |
 |---|---|---|
-| id | UUID | Primary key |
-| workspace_id | UUID | Foreign key → workspaces.id |
-| agent_id | UUID | Foreign key → agents.id |
-| input | TEXT | Evaluation input |
-| expected_behavior | TEXT | Expected result |
-| category | VARCHAR | Evaluation category |
-| status | VARCHAR | active / disabled |
-| created_at | TIMESTAMP | Creation time |
+| id | UUID | Server-generated primary key |
+| workspace_id | UUID | Foreign key -> workspaces.id |
+| name | VARCHAR(255) | Trimmed, nonblank, 1-255 characters |
+| description | TEXT | Nullable, up to 5000 characters |
+| status | VARCHAR(16) | active / disabled; default active |
+| created_by | UUID | Composite FK (created_by, workspace_id) -> memberships(user_id, workspace_id) |
+| created_at, updated_at | TIMESTAMPTZ | Database current-time defaults; service updates updated_at |
 
-Detailed evaluation result tables will be designed
-when the evaluation module is implemented.
+Unique `(id, workspace_id)`, creator index, and list index
+`(workspace_id, created_at, id)`.
+
+## 15.2 Evaluation Case
+
+| Field | Type | Description |
+|---|---|---|
+| id | UUID | Server-generated primary key |
+| workspace_id | UUID | Foreign key -> workspaces.id |
+| dataset_id | UUID | Composite FK -> evaluation_datasets(id, workspace_id) |
+| case_type | VARCHAR(32) | knowledge_qa / tool_calling / permission_boundary / refusal_behavior; immutable |
+| name | VARCHAR(255) | Trimmed, nonblank, 1-255 characters |
+| description | TEXT | Nullable, up to 5000 characters |
+| test_input | TEXT | Trimmed, nonblank, 1-2000 characters; synthetic/redacted only |
+| expected_behavior | JSONB | Required, nonempty object; strict type-specific schema validated by service |
+| schema_version | SMALLINT | Server-owned constant 1 |
+| agent_id | UUID | Nullable composite FK -> agents(id, workspace_id) |
+| knowledge_base_id | UUID | Nullable composite FK -> knowledge_bases(id, workspace_id) |
+| tool_id | UUID | Nullable composite FK -> tools(id, workspace_id) |
+| status | VARCHAR(16) | active / disabled; default active |
+| created_by | UUID | Composite FK -> memberships(user_id, workspace_id) |
+| created_at, updated_at | TIMESTAMPTZ | Database current-time defaults; service updates updated_at |
+
+Unique `(id, workspace_id)`, indexes on creator and optional references, and
+list index `(workspace_id, dataset_id, created_at, id)`. All foreign keys on
+both tables use `ON DELETE RESTRICT`. Database checks enforce enums, text
+bounds, nonblank trimmed name/input, schema version, and JSONB object shape;
+Pydantic/service checks enforce the full typed expectation and reference rules.
+
+Only same-Workspace Agent/System administrators may read or manage these
+definitions. Dataset disabling does not cascade Case statuses; existing Cases
+remain editable, while new Case creation requires an active parent. Case
+ownership, category and creator cannot be changed. No delete, expiry or purge.
+
+Content is retained as Workspace-confidential plaintext under existing DB and
+backup controls, with no automated DLP or external transfer. Lists omit Case
+input and expectations; authorized detail returns them. No execution results,
+metrics, scoring, actor impersonation or provider calls exist in Feature 015.
+Exact expectation contracts are in the Feature 015 specification, Section 6.
 
 ---
 
@@ -528,6 +565,7 @@ Examples:
 - approvals
 - conversations
 - execution_logs
+- evaluation_datasets
 - evaluation_cases
 
 Every backend query for workspace-owned resources

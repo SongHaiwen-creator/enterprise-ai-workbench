@@ -1,6 +1,6 @@
 # Feature 014 - Execution Logs
 
-Status: Implemented in Phase B (pending independent review and human merge); Phase A specification (revision 2, H1-H4) approved
+Status: Implemented - merged/delivered into main (PR #33, 2026-10-01); Issue #32 closed; Phase A specification (revision 2, H1-H4) approved
 Milestone: 4
 Baseline: `main` at `ec55dd2` (Features 001-013 merged; Alembic head `0009`)
 Risk class: High (`AGENTS.md` High-Risk Changes: new migration; security-sensitive
@@ -814,6 +814,5 @@ Decisions made by the human maintainer: H1-H4 approved as recommended.
 
 - Branch: `feat/execution-logs` from `origin/main` (`ec55dd2`).
 - Issue: #32 - Feature 014 - Execution Logs.
-- Pull Request: #33. Phase A approved; Phase B is implemented on the same
-  branch. Not to be merged until Phase B passes independent review and a
-  human merges it.
+- Pull Request: #33, merged into main on 2026-10-01 at
+  `760d7fb315993b52835a5a5ff019adaa200dbe13`; related Issue #32 closed.
