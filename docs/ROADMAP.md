@@ -355,7 +355,10 @@ API-only administration UI, document and Agent versions, evaluation comparison,
 Workflow configuration/execution, Conversation and parameter collection, employee
 request tracking, Workspace/profile UX, and final acceptance/delivery.
 
-Features 017-028 are planning identifiers, not started or implementation-approved.
+Features 018-029 are planning identifiers, not started or implementation-approved.
+Feature 017 Chinese UI Refresh is already tracked by Issue #39 on a separate
+worktree and is not yet merged; it adds presentation, not the missing business
+capabilities. Deliver it before starting proposed Feature 018 Bad Case Management.
 Start only the next Feature in a new thread from the latest merged main, following
 its Phase A specification and high-risk approvals. One Feature remains active
 at a time; worktrees isolate implementation and review without changing this rule.
