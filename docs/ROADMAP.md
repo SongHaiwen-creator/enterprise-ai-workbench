@@ -223,8 +223,9 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 # 6. Milestone 4 - Logs, Evaluation & Bad Cases
 
 Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
-Feature 015 Evaluation Dataset implemented on PR #35, pending independent
-review and human merge)
+Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
+Feature 016 Evaluation Run & Metrics is implemented on its feature branch,
+verified and independently reviewed; pending human merge of PR #37)
 
 Goal:
 
@@ -248,9 +249,10 @@ Record:
 
 Feature 015 covers Workspace-owned dataset and case management only. Its
 approved specification is in `docs/features/015-evaluation-dataset.md`.
-Phase B implements typed Dataset/Case CRUD, administrative UI, and additive
-migration `0011`, verified only on the dedicated test database. Delivery remains
-pending independent review and human merge of PR #35.
+Delivered Phase B includes typed Dataset/Case CRUD, administrative UI, and additive
+migration `0011`, with verification recorded in its specification. PR #35 is
+merged and Issue #34 is closed. Repository migration head does not guarantee
+the revision of any runtime database.
 Evaluation execution and metrics are reserved for Feature 016.
 
 Support evaluation cases for:
@@ -260,17 +262,24 @@ Support evaluation cases for:
 - Permission boundaries
 - Refusal behavior
 
-### Evaluation Metrics
+### Evaluation Run & Metrics (Feature 016)
 
-Initial metrics may include:
+H1-H7-approved Phase B implementation: `docs/features/016-evaluation-run-metrics.md`.
+Revision `0012`, bounded synchronous runner and administration UI are implemented
+on `feat/evaluation-run-metrics`, pending human merge of PR #37. Issue #36
+remains open. Metrics supported by current structured Case expectations are:
 
-- Answer correctness
-- Citation correctness
-- Retrieval success
-- Tool calling success
-- Task completion
-- Refusal accuracy
-- Latency
+- Overall/category pass rates with separate ERROR counts and evaluation coverage
+- Routing match rate
+- Tool selection and would-execute/approval-outcome match rates (dry run only)
+- Shared permission-policy fixture pass rate
+- Structured refusal compliance
+- Citation presence/absence requirement compliance
+- Latency summary
+
+Semantic answer correctness, citation correctness and retrieval relevance require
+ground truth not present in Feature 015 and are deferred. Tool adapter execution,
+Approval creation, semantic judging and version comparison are outside Feature 016.
 
 ### Bad Case Management
 

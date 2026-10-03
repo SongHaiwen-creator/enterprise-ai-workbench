@@ -245,6 +245,8 @@ To be decided after local MVP is stable
 
 ## 11. Evaluation Definition Management (Feature 015)
 
+Status: merged/delivered in PR #35 on 2026-10-02; Issue #34 closed.
+
 Workspace -> EvaluationDataset -> EvaluationCase is an administrative CRUD
 surface, separate from the AI execution layer. Same-Workspace `agent_admin`
 and `system_admin` use typed frontend forms and eight backend list/detail/
@@ -268,4 +270,24 @@ unlike the metadata-only Execution Logs. There is no provider call, Tool
 dispatch, Approval, execution-log recorder, evaluation run, metric, scoring,
 external transfer or background job. Disable retains content. Execution,
 identity fixture construction and data egress require a separate Feature 016
-design. Migration `0011` is additive; runtime migration is not authorized.
+design. Feature 015 introduced migration `0011`; this makes no guarantee about
+runtime database state.
+
+## 12. Evaluation Run & Metrics (Feature 016)
+
+Phase B implements the H1-H7-approved specification at
+`docs/features/016-evaluation-run-metrics.md`, pending human merge of PR #37.
+Repository migration head is `0012`; no runtime database upgrade is implied.
+Runs execute 1-5 Cases sequentially and synchronously with cooperative
+60-second Case / 120-second Run budgets and one running Run per Workspace.
+Immutable Case/config snapshots retain history; conditional terminal writes
+fence stale-run reconciliation. PASS/FAIL comparisons and ERROR counts feed
+derived metrics with explicit eligible denominators.
+
+Routing and read-only RAG reuse existing provider protocols. A shared
+non-mutating Tool plan stops before adapters and Approval mutation. Permission
+Cases evaluate narrow shared policy predicates using inert facts, never runtime
+identities. Current Membership and scoped references are checked again across
+execution phases. Only reviewed synthetic/redacted content may cross the
+explicitly acknowledged OpenAI egress boundary. No worker, framework, semantic
+judge, policy expansion or next-roadmap feature is implemented.

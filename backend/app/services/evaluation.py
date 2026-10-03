@@ -13,6 +13,7 @@ from app.schemas.evaluation import (
     DatasetUpdate,
     ToolExpectation,
 )
+from app.services.authorization_policy import require_scoped_resource
 from app.services.exceptions import ConflictError, NotFoundError, ServiceError
 from app.services.tool_registry import TOOL_REGISTRY
 
@@ -36,8 +37,7 @@ def get_dataset(session: Session, workspace_id: UUID, dataset_id: UUID, *, lock:
         EvaluationDataset.id == dataset_id,
     )
     row = _locked(session, query) if lock else session.scalar(query)
-    if row is None:
-        raise NotFoundError("Evaluation dataset not found")
+    require_scoped_resource(row is not None, "Evaluation dataset not found")
     return row
 
 

@@ -219,7 +219,7 @@ def _capability_state(
 # --- Creation boundary (Section 15.1) --------------------------------------
 
 
-def create_pending_approval(
+def validate_approval_creation(
     session: Session,
     *,
     workspace_id: UUID,
@@ -228,9 +228,8 @@ def create_pending_approval(
     tool_id: UUID,
     definition: ToolDefinition,
     arguments: BaseModel,
-) -> Approval:
-    """Persist (or return the identical pending) Approval and commit it."""
-
+) -> tuple:
+    """Read-only creation validation shared with evaluation; no Approval mutations."""
     requirement = definition.approval
     if definition.immediate_execution or requirement is None:
         raise ApprovalConfigurationError(APPROVAL_CONFIGURATION_UNAVAILABLE)
@@ -263,6 +262,47 @@ def create_pending_approval(
         )
     except SnapshotCanonicalizationError as exc:
         raise ApprovalConfigurationError(APPROVAL_CONFIGURATION_UNAVAILABLE) from exc
+
+    return (
+        requester,
+        requirement,
+        arguments_value,
+        arguments_hash,
+        capability_value,
+        policy_value,
+        digest,
+    )
+
+
+def create_pending_approval(
+    session: Session,
+    *,
+    workspace_id: UUID,
+    requester_id: UUID,
+    agent_id: UUID,
+    tool_id: UUID,
+    definition: ToolDefinition,
+    arguments: BaseModel,
+) -> Approval:
+    """Persist (or return the identical pending) Approval and commit it."""
+
+    (
+        requester,
+        requirement,
+        arguments_value,
+        arguments_hash,
+        capability_value,
+        policy_value,
+        digest,
+    ) = validate_approval_creation(
+        session,
+        workspace_id=workspace_id,
+        requester_id=requester_id,
+        agent_id=agent_id,
+        tool_id=tool_id,
+        definition=definition,
+        arguments=arguments,
+    )
 
     identity = (
         Approval.workspace_id == workspace_id,

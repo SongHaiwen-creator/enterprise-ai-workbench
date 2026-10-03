@@ -32,7 +32,6 @@ from app.schemas.agent_routing import (
     KnowledgeRouteResponse,
     RoutingIntent,
     ToolRouteResponse,
-    UnsupportedOutcome,
     UnsupportedRouteResponse,
 )
 from app.schemas.answer import GenerationMetadata, GroundedAnswerResponse, GroundedCitation
@@ -45,6 +44,7 @@ from app.schemas.tool_calling import (
 from app.services import agents as agent_service
 from app.services import answers as answer_service
 from app.services import knowledge_bases as knowledge_base_service
+from app.services.agent_responses import unsupported_outcome
 from app.services.agents import (
     AGENT_NOT_ACTIVE,
     KNOWLEDGE_BASE_NOT_ACTIVE,
@@ -97,7 +97,6 @@ AGENT_RESPONSES = {
     502: {"model": ErrorResponse},
     503: {"model": ErrorResponse},
 }
-UNSUPPORTED_MESSAGE = "This request is outside the configured Agent capabilities."
 
 
 @router.post(
@@ -277,10 +276,7 @@ def _route_agent_request(
         return UnsupportedRouteResponse(
             request=payload.request,
             intent=RoutingIntent.UNSUPPORTED,
-            outcome=UnsupportedOutcome(
-                status="unsupported",
-                message=UNSUPPORTED_MESSAGE,
-            ),
+            outcome=unsupported_outcome(),
         )
 
     if payload.knowledge_base_id is None:

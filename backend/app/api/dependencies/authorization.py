@@ -6,7 +6,8 @@ from sqlalchemy import select
 
 from app.api.dependencies.auth import CurrentUser, DatabaseSession
 from app.models import Membership, Workspace
-from app.models.enums import MembershipRole, MembershipStatus, WorkspaceStatus
+from app.models.enums import MembershipRole, WorkspaceStatus
+from app.services.authorization_policy import active_membership, agent_administrator
 from app.services.exceptions import (
     WORKSPACE_ACCESS_DENIED,
     ForbiddenError,
@@ -35,7 +36,7 @@ def get_active_workspace_membership(
             Membership.user_id == current_user.id,
         )
     )
-    if membership is None or membership.status is not MembershipStatus.ACTIVE:
+    if membership is None or not active_membership(membership.status.value):
         raise ForbiddenError(WORKSPACE_ACCESS_DENIED)
     return membership
 
@@ -81,11 +82,7 @@ KnowledgeAdministratorMembership = Annotated[
 def require_agent_administrator(
     membership: ActiveWorkspaceMembership,
 ) -> Membership:
-    allowed_roles = {
-        MembershipRole.AGENT_ADMIN,
-        MembershipRole.SYSTEM_ADMIN,
-    }
-    if membership.role not in allowed_roles:
+    if not agent_administrator(membership.role.value):
         raise ForbiddenError(AGENT_ADMIN_REQUIRED)
     return membership
 

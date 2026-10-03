@@ -6,6 +6,9 @@ import { EvaluationDatasets } from "@/app/components/evaluation-datasets";
 import { ApiError } from "@/utils/api";
 import * as api from "@/utils/evaluation";
 
+// Definition forms remain independently verified; Run behavior has its own suite.
+vi.mock("@/app/components/evaluation-runs", () => ({ EvaluationRuns: () => null }));
+
 vi.mock("@/utils/evaluation", async importOriginal => {
   const original = await importOriginal<typeof import("@/utils/evaluation")>();
   return { ...original, listEvaluationDatasets: vi.fn(), listEvaluationCases: vi.fn(),

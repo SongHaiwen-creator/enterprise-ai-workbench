@@ -141,7 +141,7 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     with postgres_engine.connect() as connection:
         migration_context = MigrationContext.configure(connection)
-        assert migration_context.get_current_revision() == "0011"
+        assert migration_context.get_current_revision() == "0012"
 
 
 def test_knowledge_base_migration_upgrades_and_downgrades(
@@ -654,7 +654,7 @@ def test_applied_migrations_are_unchanged_and_head_is_single() -> None:
         content = (versions / name).read_bytes().replace(b"\r\n", b"\n")
         assert hashlib.sha256(content).hexdigest() == expected, name
     script = ScriptDirectory.from_config(Config(str(BACKEND_ROOT / "alembic.ini")))
-    assert script.get_heads() == ["0011"]
+    assert script.get_heads() == ["0012"]
     assert script.get_revision("0010").down_revision == "0009"
 
 

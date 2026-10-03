@@ -567,6 +567,8 @@ Examples:
 - execution_logs
 - evaluation_datasets
 - evaluation_cases
+- evaluation_runs
+- evaluation_run_cases
 
 Every backend query for workspace-owned resources
 must verify workspace_id.
@@ -598,4 +600,42 @@ To be decided during later feature design:
 - Workflow node representation
 - Conversation message structure
 - Prompt version management
-- Evaluation run and metric structure
+
+
+# 19. Evaluation Run History (Feature 016)
+
+Additive revision `0012` follows `0011`. These tables are implemented on the
+Feature 016 branch pending human merge; verification migrates only the dedicated
+test database. No runtime database upgrade is implied. All foreign keys use
+`ON DELETE RESTRICT`; composite references enforce same-Workspace ownership.
+
+`evaluation_runs` stores UUID identity/workspace/dataset/agent/creator, running /
+completed / failed lifecycle, database timestamps, a 120-second deadline,
+1-5 total Cases and passed/failed/error counts, fixed failure category, immutable
+Dataset/Agent/config JSONB snapshots, snapshot/scorer versions, canonical
+`CHAR(64)` SHA-256 and explicit provider egress acknowledgement. Workspace,
+Dataset, Agent and creator Membership references are enforced. A partial unique
+index permits at most one running Run per Workspace. Checks enforce counts,
+terminal completeness, timestamps, versions, enums and JSON object shape.
+
+`evaluation_run_cases` stores same-Workspace Run/source-Case references, ordinal
+1-5, captured category/name/input/expectation/context, nullable normalized actual
+behavior and comparison checks, pending / passed / failed / error result,
+attempted flag, nullable nonnegative latency, fixed error category and timestamps.
+Unique `(run_id,ordinal)` and `(run_id,case_id)` prevent duplicate capture. Checks
+enforce result/check/error consistency and measured-attempt/timestamp rules;
+SQL NULL cannot bypass terminal consistency.
+
+Snapshots and terminal Case results are immutable in the service. No history
+delete or edit API exists. Measured attempts and their terminal results persist
+atomically. Crash-pending Cases reconcile to interrupted ERROR with no recorded
+latency; attempted=false does not establish that a provider call never occurred.
+Metrics are derived from captured results, not writable rows: ERROR is excluded
+from behavioral denominators and zero eligible counts produce null rates.
+
+Historical input and Agent prompts are Workspace-confidential plaintext. Only
+reviewed synthetic/redacted material is permitted; config snapshots allowlist
+fields and omit credentials/secrets. Corpus manifests retain IDs/content hashes,
+not the corpus itself. Current Agent/System administrator authority controls all
+Run APIs. Full contracts, constraints and retention boundaries are in
+`docs/features/016-evaluation-run-metrics.md`.
