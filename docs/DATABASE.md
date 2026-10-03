@@ -604,8 +604,8 @@ To be decided during later feature design:
 
 # 19. Evaluation Run History (Feature 016)
 
-Additive revision `0012` follows `0011`. These tables are implemented on the
-Feature 016 branch pending human merge; verification migrates only the dedicated
+Additive revision `0012` follows `0011`. These tables were delivered in
+Feature 016 PR #37 on 2026-10-03; verification migrated only the dedicated
 test database. No runtime database upgrade is implied. All foreign keys use
 `ON DELETE RESTRICT`; composite references enforce same-Workspace ownership.
 
