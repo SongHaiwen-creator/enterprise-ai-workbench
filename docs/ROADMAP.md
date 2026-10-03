@@ -224,7 +224,8 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 
 Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
 Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
-Feature 016 Evaluation Run & Metrics is in Phase A design, not implemented)
+Feature 016 Evaluation Run & Metrics is implemented on its feature branch,
+verified and independently reviewed; pending human merge of PR #37)
 
 Goal:
 
@@ -263,9 +264,10 @@ Support evaluation cases for:
 
 ### Evaluation Run & Metrics (Feature 016)
 
-Phase A proposal: `docs/features/016-evaluation-run-metrics.md`. Phase B requires
-explicit approval; no runner or revision `0012` exists yet. Proposed metrics
-supported by current structured Case expectations are:
+H1-H7-approved Phase B implementation: `docs/features/016-evaluation-run-metrics.md`.
+Revision `0012`, bounded synchronous runner and administration UI are implemented
+on `feat/evaluation-run-metrics`, pending human merge of PR #37. Issue #36
+remains open. Metrics supported by current structured Case expectations are:
 
 - Overall/category pass rates with separate ERROR counts and evaluation coverage
 - Routing match rate

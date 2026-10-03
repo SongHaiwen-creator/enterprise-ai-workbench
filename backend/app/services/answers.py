@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -46,6 +47,8 @@ def answer_question(
     question: str,
     embedding_provider: EmbeddingProvider,
     generation_provider: GenerationProvider,
+    *,
+    observe_retrieval: Callable[[list[retrieval_service.SearchResult]], None] | None = None,
 ) -> AnswerResult:
     results = retrieval_service.search_knowledge_base(
         session,
@@ -55,6 +58,8 @@ def answer_question(
         ANSWER_RETRIEVAL_LIMIT,
         embedding_provider,
     )
+    if observe_retrieval is not None:
+        observe_retrieval(results)
     if not results:
         return AnswerResult(
             question=question,

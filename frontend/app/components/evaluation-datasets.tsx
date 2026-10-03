@@ -10,6 +10,7 @@ import {
   listEvaluationCases, listEvaluationDatasets, updateEvaluationCase, updateEvaluationDataset,
 } from "@/utils/evaluation";
 import { formatEnumLabel } from "@/utils/presentation";
+import { EvaluationRuns } from "./evaluation-runs";
 
 const CATEGORIES: EvaluationCaseType[] = ["knowledge_qa", "tool_calling", "permission_boundary", "refusal_behavior"];
 type Resources = Awaited<ReturnType<typeof evaluationResources>>;
@@ -192,7 +193,7 @@ function WorkspaceDatasets({ workspaceId, workspaceName, accessToken, onUnauthor
 
   return <section className="qa-context-card" aria-label="Evaluation datasets">
     <h2>Evaluation datasets</h2>
-    <p>Reusable test definitions in {workspaceName}. Cases are stored; nothing is executed or scored.</p>
+    <p>Reusable test definitions in {workspaceName}. Run evaluations explicitly from an active dataset.</p>
     <p className="muted">Synthetic or redacted content only. Disabled datasets and cases retain their content.</p>
     {busy && <p role="status">Loading evaluation data…</p>}
     {error && <div role="alert">{error} <button type="button" disabled={busy} onClick={() => void run(async () => { await initialize(); if (dataset) await reloadCases(dataset); })}>Retry</button></div>}
@@ -214,6 +215,7 @@ function WorkspaceDatasets({ workspaceId, workspaceName, accessToken, onUnauthor
         })} />
       </div>
       {dataset && <div>
+        <EvaluationRuns key={`${dataset.id}:${cases.map(c => `${c.id}:${c.updated_at}`).join(",")}`} workspaceId={workspaceId} accessToken={accessToken} dataset={dataset} agents={resources.agents} onUnauthorized={onUnauthorized} />
         <h3>Cases in {dataset.name}</h3><p>{dataset.description}</p>
         {dataset.status === "disabled" && <p>Dataset disabled. Reactivate it to create cases; existing cases remain editable.</p>}
         {!busy && !cases.length && <p>No evaluation cases yet.</p>}

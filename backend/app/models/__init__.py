@@ -4,6 +4,7 @@ from app.models.approval import Approval, MockITAccessRequest
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.models.evaluation import EvaluationCase, EvaluationDataset
+from app.models.evaluation_run import EvaluationRun, EvaluationRunCase
 from app.models.execution_log import ExecutionLog
 from app.models.knowledge_base import KnowledgeBase
 from app.models.membership import Membership
@@ -20,6 +21,8 @@ __all__ = [
     "ExecutionLog",
     "EvaluationCase",
     "EvaluationDataset",
+    "EvaluationRun",
+    "EvaluationRunCase",
     "KnowledgeBase",
     "Membership",
     "MockITAccessRequest",

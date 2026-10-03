@@ -270,20 +270,24 @@ unlike the metadata-only Execution Logs. There is no provider call, Tool
 dispatch, Approval, execution-log recorder, evaluation run, metric, scoring,
 external transfer or background job. Disable retains content. Execution,
 identity fixture construction and data egress require a separate Feature 016
-design. Migration `0011` is the repository head; this makes no guarantee about
+design. Feature 015 introduced migration `0011`; this makes no guarantee about
 runtime database state.
 
-## 12. Evaluation Run & Metrics (Feature 016 proposal)
+## 12. Evaluation Run & Metrics (Feature 016)
 
-Phase A only; no runner, migration `0012` or architecture refactor is implemented.
-The proposal in `docs/features/016-evaluation-run-metrics.md` requires H1-H7
-approval before Phase B. It recommends bounded sequential synchronous runs,
-Workspace-owned immutable Case/config snapshots, structured PASS/FAIL/ERROR
-comparisons and derived metrics. ERROR is separate from behavioral failure.
+Phase B implements the H1-H7-approved specification at
+`docs/features/016-evaluation-run-metrics.md`, pending human merge of PR #37.
+Repository migration head is `0012`; no runtime database upgrade is implied.
+Runs execute 1-5 Cases sequentially and synchronously with cooperative
+60-second Case / 120-second Run budgets and one running Run per Workspace.
+Immutable Case/config snapshots retain history; conditional terminal writes
+fence stale-run reconciliation. PASS/FAIL comparisons and ERROR counts feed
+derived metrics with explicit eligible denominators.
 
-Routing and read-only RAG protocols may be reused, while a shared non-mutating
-Tool plan must stop before any adapter or Approval operation. Permission Cases
-would evaluate narrow shared policy predicates using inert facts, never runtime
-identities. Current authorization remains authoritative. Confidential provider
-input/evidence transfer requires a separately approved data-egress boundary.
-No worker, framework, semantic judge or next-roadmap feature is proposed.
+Routing and read-only RAG reuse existing provider protocols. A shared
+non-mutating Tool plan stops before adapters and Approval mutation. Permission
+Cases evaluate narrow shared policy predicates using inert facts, never runtime
+identities. Current Membership and scoped references are checked again across
+execution phases. Only reviewed synthetic/redacted content may cross the
+explicitly acknowledged OpenAI egress boundary. No worker, framework, semantic
+judge, policy expansion or next-roadmap feature is implemented.

@@ -1,7 +1,8 @@
+from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
@@ -23,7 +24,12 @@ from app.schemas.tool_calling import (
     ToolExecutedOutcome,
     ToolNotExecutedOutcome,
 )
-from app.services.approvals import ApprovalConfigurationError, create_pending_approval
+from app.services.approvals import (
+    ApprovalConfigurationError,
+    create_pending_approval,
+    validate_approval_creation,
+)
+from app.services.authorization_policy import require_scoped_resource
 from app.services.exceptions import (
     WORKSPACE_ACCESS_DENIED,
     ConflictError,
@@ -132,8 +138,7 @@ def get_tool(session: Session, workspace_id: UUID, tool_id: UUID) -> Tool:
     tool = session.scalar(
         select(Tool).where(Tool.id == tool_id, Tool.workspace_id == workspace_id)
     )
-    if tool is None:
-        raise NotFoundError("Tool not found")
+    require_scoped_resource(tool is not None, "Tool not found")
     return tool
 
 
@@ -321,7 +326,14 @@ def _not_executed(
     )
 
 
-def handle_tool_request(
+@dataclass(frozen=True)
+class ToolPlan:
+    tool: Tool
+    definition: ToolDefinition
+    arguments: BaseModel
+
+
+def plan_tool_request(
     session: Session,
     *,
     workspace_id: UUID,
@@ -330,7 +342,7 @@ def handle_tool_request(
     agent_scope: str,
     user_id: UUID,
     selector: ToolSelector,
-) -> ToolExecutedOutcome | ToolApprovalRequiredOutcome | ToolNotExecutedOutcome:
+) -> ToolPlan | ToolNotExecutedOutcome:
     configured = eligible_tools(session, workspace_id, agent_id)
     if not configured:
         return _not_executed("no_available_tool")
@@ -346,12 +358,8 @@ def handle_tool_request(
     if not isinstance(selection, ToolSelectionProposal):
         raise ToolAdapterError(TOOL_PROVIDER_FAILURE)
 
-    user_name, user_email = _fresh_authorized_caller_identity(
-        session, workspace_id, user_id
-    )
-    tool = _fresh_effective_tool(
-        session, workspace_id, agent_id, selection.tool_key
-    )
+    _fresh_authorized_caller_identity(session, workspace_id, user_id)
+    tool = _fresh_effective_tool(session, workspace_id, agent_id, selection.tool_key)
     definition = _definition_for(tool)
     try:
         arguments = definition.argument_model.model_validate(selection.arguments)
@@ -360,6 +368,54 @@ def handle_tool_request(
             TOOL_PROVIDER_FAILURE, tool_id=tool.id, tool_key=tool.tool_key
         ) from exc
 
+    if not definition.immediate_execution:
+        try:
+            validate_approval_creation(
+                session,
+                workspace_id=workspace_id,
+                requester_id=user_id,
+                agent_id=agent_id,
+                tool_id=tool.id,
+                definition=definition,
+                arguments=arguments,
+            )
+        except ApprovalConfigurationError:
+            raise ToolRegistryConfigurationError(TOOL_REGISTRY_FAILURE) from None
+    elif (
+        definition.risk is not ToolRisk.LOW
+        or definition.operation_type is not ToolOperationType.READ_ONLY
+        or definition.adapter is None
+        or definition.result_model is None
+    ):
+        raise ToolRegistryConfigurationError(TOOL_REGISTRY_FAILURE)
+    return ToolPlan(tool, definition, arguments)
+
+
+def handle_tool_request(
+    session: Session,
+    *,
+    workspace_id: UUID,
+    agent_id: UUID,
+    request: str,
+    agent_scope: str,
+    user_id: UUID,
+    selector: ToolSelector,
+) -> ToolExecutedOutcome | ToolApprovalRequiredOutcome | ToolNotExecutedOutcome:
+    plan = plan_tool_request(
+        session,
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        request=request,
+        agent_scope=agent_scope,
+        user_id=user_id,
+        selector=selector,
+    )
+    if isinstance(plan, ToolNotExecutedOutcome):
+        return plan
+    # Dispatch remains owned by the normal product path and freshly authorized.
+    user_name, user_email = _fresh_authorized_caller_identity(session, workspace_id, user_id)
+    tool = _fresh_effective_tool(session, workspace_id, agent_id, plan.tool.tool_key)
+    definition, arguments = _definition_for(tool), plan.arguments
     reference = {"tool_key": tool.tool_key, "name": tool.name}
     if not definition.immediate_execution:
         try:

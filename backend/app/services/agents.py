@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Agent
 from app.models.enums import AgentStatus
 from app.schemas.agent import AgentCreate, AgentUpdate
-from app.services.exceptions import NotFoundError
+from app.services.authorization_policy import require_scoped_resource
 
 AGENT_NOT_FOUND = "Agent not found"
 AGENT_NOT_ACTIVE = "Agent is not active"
@@ -21,8 +21,7 @@ def get_agent(session: Session, workspace_id: UUID, agent_id: UUID) -> Agent:
             Agent.workspace_id == workspace_id,
         )
     )
-    if agent is None:
-        raise NotFoundError(AGENT_NOT_FOUND)
+    require_scoped_resource(agent is not None, AGENT_NOT_FOUND)
     return agent
 
 

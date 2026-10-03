@@ -1,6 +1,6 @@
 # Feature 016 - Evaluation Run & Metrics
 
-Status: Phase A proposal only; Phase B requires explicit human approval H1-H7
+Status: Phase B implemented and verified; independently reviewed; PR #37 pending human merge
 Milestone: 4 (in progress)
 Baseline: `main` at `5c829ab45c9399c6dd6efcab3526f30004224cec`
 Branch: `feat/evaluation-run-metrics`
@@ -17,11 +17,17 @@ Feature 015, consistent with PRODUCT_SPEC security, traceability, human control
 and evaluation principles. ROADMAP's aspirational semantic metrics are not
 supported by Feature 015 ground truth and are deferred, not silently implemented.
 
-Phase A changes documentation only, creates a tracking Issue and opens a
-documentation-only PR. No application/test code, dependency, migration file or
-runtime database change is authorized. Phase B is not approved by this document.
-No merge is authorized. Feature delivery requires later implementation,
-verification, independent review and human merge.
+Phase A created the proposal at `3792b32c3d964420d6d8aa43240251e5889f256c`.
+The user subsequently explicitly approved H1-H7 for scoped Phase B implementation
+and dedicated test-database migration verification. This authorizes the
+implementation below, without runtime/production migration, production PII or
+secrets, Tool adapters during evaluation, Approval mutation, policy expansion,
+new dependencies/infrastructure, Feature 017 or merge into main. Delivery still
+requires independent review and human merge.
+
+Section 2 records the historical Phase A baseline; it does not describe the
+current implementation. PR [#37](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/37)
+is the implementation review vehicle.
 
 ## 2. Read-only baseline verification (2026-10-02)
 
@@ -585,7 +591,58 @@ retention/purge, dataset import/export, generic executable assertions or APIs
 removed. Existing offline EnterpriseRAG benchmark remains separate; its corpus
 ground truth does not supply ground truth for arbitrary Feature 015 Cases.
 
-The Feature 016 Issue remains open through Phase A and closes only after the
-implementation PR is human-merged. The Phase-A-only PR references it with
-`Refs`, not `Closes`; merging design documentation cannot deliver Feature 016.
-Stop at Phase A PR-ready and await H1-H7 approval before Phase B.
+Issue #36 remains open until the verified implementation is independently
+reviewed and human-merged. The implementation PR may use `Closes #36`, which
+closes it only on merge. Stop at Feature 016 PR-ready; do not start Feature 017.
+
+
+## 19. Phase B implementation and verification record
+
+H1-H7 approval applies to proposal commit
+`3792b32c3d964420d6d8aa43240251e5889f256c`; no additional high-risk scope
+was introduced. Revision `0012` implements only the two approved tables.
+The five APIs and administration UI use captured history, exact comparisons
+and derived metrics. Tool evaluation uses read-only planning and permission
+evaluation uses inert policy facts; neither executes adapters nor mutates
+Approvals. Existing request authorization remains authoritative.
+
+Measured attempts are persisted atomically with their terminal result.
+`attempted=false` means no measured attempt was durably recorded; after a
+process crash it does not prove that no provider request occurred. Stale
+pending Cases become interrupted ERROR with null latency, avoiding invented
+wall-clock latency. Terminal writes are fenced against reconciliation, and
+latency excludes result-persistence waits.
+
+Automated provider tests use fakes; no live OpenAI request is verification
+evidence. Migration upgrade, downgrade/re-upgrade, schema parity, constraint
+negatives and concurrent Sessions run only against the safety-checked dedicated
+`enterprise_ai_workbench_test` database. Runtime/production migration remains
+unexecuted and unauthorized. Verification results and independent review are
+recorded below.
+
+
+Verification on 2026-10-03:
+
+- Feature 016 unit/PostgreSQL selection: **543 passed**, 608 unrelated tests
+  deselected; no skips. Full backend `pytest backend/tests -q
+  -p no:cacheprovider -x`: **1520 passed**, no skips.
+- Backend Ruff: passed. Frontend `pnpm test`: **9 API + 89 UI tests passed**;
+  `pnpm lint` and production `pnpm build`: passed.
+- Migration `0011 -> 0012`, downgrade/re-upgrade, single head, metadata drift,
+  prior migration byte comparisons, composite foreign keys, nullable-state
+  constraints and real independent-Session concurrency: passed in the dedicated
+  test database. No runtime migration or live OpenAI verification was performed.
+- Self-review and `git diff --check`: passed. Existing unrelated local files
+  are excluded from the implementation commit.
+- Independent review completed with no remaining blocking findings after fixes
+  for SQL NULL consistency, measured latency persistence, final GET/POST
+  authorization checks and crash-attempt labeling; regression tests cover the
+  fixes. Review was static code/test inspection, not live-provider validation.
+
+Initial rerun encountered unavailable local PostgreSQL; after Docker/service
+startup it passed. Full-suite ordering also exposed global-count test
+assumptions; assertions now scope their own Workspace and the full rerun passed.
+Existing Starlette/Alembic deprecation warnings remain (68 in the full suite).
+Cooperative deadlines, plaintext confidential history and manually reviewed
+synthetic/redacted provider input retain the limits described above. Issue #36
+remains open; Feature 016 is PR-ready but delivered only after human merge.

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models import KnowledgeBase
 from app.schemas.knowledge_base import KnowledgeBaseCreate, KnowledgeBaseUpdate
-from app.services.exceptions import NotFoundError
+from app.services.authorization_policy import require_scoped_resource
 
 KNOWLEDGE_BASE_NOT_FOUND = "Knowledge base not found"
 
@@ -21,8 +21,7 @@ def get_knowledge_base(
             KnowledgeBase.workspace_id == workspace_id,
         )
     )
-    if knowledge_base is None:
-        raise NotFoundError(KNOWLEDGE_BASE_NOT_FOUND)
+    require_scoped_resource(knowledge_base is not None, KNOWLEDGE_BASE_NOT_FOUND)
     return knowledge_base
 
 
