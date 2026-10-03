@@ -276,7 +276,7 @@ runtime database state.
 ## 12. Evaluation Run & Metrics (Feature 016)
 
 Phase B implements the H1-H7-approved specification at
-`docs/features/016-evaluation-run-metrics.md`, pending human merge of PR #37.
+`docs/features/016-evaluation-run-metrics.md`, merged in PR #37 on 2026-10-03.
 Repository migration head is `0012`; no runtime database upgrade is implied.
 Runs execute 1-5 Cases sequentially and synchronously with cooperative
 60-second Case / 120-second Run budgets and one running Run per Workspace.

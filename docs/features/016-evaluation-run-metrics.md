@@ -1,6 +1,6 @@
 # Feature 016 - Evaluation Run & Metrics
 
-Status: Phase B implemented and verified; independently reviewed; PR #37 pending human merge
+Status: Merged/delivered in PR #37 on 2026-10-03; Issue #36 closed
 Milestone: 4 (in progress)
 Baseline: `main` at `5c829ab45c9399c6dd6efcab3526f30004224cec`
 Branch: `feat/evaluation-run-metrics`
@@ -22,8 +22,8 @@ The user subsequently explicitly approved H1-H7 for scoped Phase B implementatio
 and dedicated test-database migration verification. This authorizes the
 implementation below, without runtime/production migration, production PII or
 secrets, Tool adapters during evaluation, Approval mutation, policy expansion,
-new dependencies/infrastructure, Feature 017 or merge into main. Delivery still
-requires independent review and human merge.
+new dependencies/infrastructure, Feature 017 or merge into main. Independent
+review and human merge have since completed; runtime migration remains separate.
 
 Section 2 records the historical Phase A baseline; it does not describe the
 current implementation. PR [#37](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/37)
@@ -591,9 +591,9 @@ retention/purge, dataset import/export, generic executable assertions or APIs
 removed. Existing offline EnterpriseRAG benchmark remains separate; its corpus
 ground truth does not supply ground truth for arbitrary Feature 015 Cases.
 
-Issue #36 remains open until the verified implementation is independently
-reviewed and human-merged. The implementation PR may use `Closes #36`, which
-closes it only on merge. Stop at Feature 016 PR-ready; do not start Feature 017.
+Issue #36 closed after the verified implementation was independently reviewed
+and human-merged in PR #37. Feature 016 is delivered. Subsequent features start
+from the latest main in a new development thread under their own approved scope.
 
 
 ## 19. Phase B implementation and verification record
@@ -645,4 +645,4 @@ assumptions; assertions now scope their own Workspace and the full rerun passed.
 Existing Starlette/Alembic deprecation warnings remain (68 in the full suite).
 Cooperative deadlines, plaintext confidential history and manually reviewed
 synthetic/redacted provider input retain the limits described above. Issue #36
-remains open; Feature 016 is PR-ready but delivered only after human merge.
+closed on merge of PR #37; Feature 016 was delivered on 2026-10-03.

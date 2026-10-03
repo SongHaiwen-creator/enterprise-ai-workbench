@@ -224,8 +224,8 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 
 Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
 Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
-Feature 016 Evaluation Run & Metrics is implemented on its feature branch,
-verified and independently reviewed; pending human merge of PR #37)
+Feature 016 Evaluation Run & Metrics merged/delivered in PR #37 on 2026-10-03;
+Bad Case Management and version comparison remain unfinished)
 
 Goal:
 
@@ -265,9 +265,9 @@ Support evaluation cases for:
 ### Evaluation Run & Metrics (Feature 016)
 
 H1-H7-approved Phase B implementation: `docs/features/016-evaluation-run-metrics.md`.
-Revision `0012`, bounded synchronous runner and administration UI are implemented
-on `feat/evaluation-run-metrics`, pending human merge of PR #37. Issue #36
-remains open. Metrics supported by current structured Case expectations are:
+Revision `0012`, bounded synchronous runner and administration UI were delivered
+in PR #37 on 2026-10-03. Issue #36 is closed. This does not imply a runtime
+database upgrade. Metrics supported by current structured Case expectations are:
 
 - Overall/category pass rates with separate ERROR counts and evaluation coverage
 - Routing match rate
@@ -344,3 +344,21 @@ The final project should demonstrate:
 - Bad case analysis
 - Product-to-engineering collaboration
 - Git-based development workflow
+
+---
+
+# 9. Full MVP Delivery Planning
+
+The remaining scope and worktree sequence are proposed in
+[MVP_DELIVERY_PLAN.md](MVP_DELIVERY_PLAN.md). That plan covers Bad Case management,
+API-only administration UI, document and Agent versions, evaluation comparison,
+Workflow configuration/execution, Conversation and parameter collection, employee
+request tracking, Workspace/profile UX, and final acceptance/delivery.
+
+Features 018-029 are planning identifiers, not started or implementation-approved.
+Feature 017 Chinese UI Refresh is already tracked by Issue #39 on a separate
+worktree and is not yet merged; it adds presentation, not the missing business
+capabilities. Deliver it before starting proposed Feature 018 Bad Case Management.
+Start only the next Feature in a new thread from the latest merged main, following
+its Phase A specification and high-risk approvals. One Feature remains active
+at a time; worktrees isolate implementation and review without changing this rule.
