@@ -50,9 +50,9 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 async function ready() {
-  await waitFor(() => expect(screen.getByRole("button", { name: "Refresh run history" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "刷新运行记录" })).toBeEnabled());
   const user = userEvent.setup();
-  await user.selectOptions(screen.getByLabelText("Evaluation Agent"), "agent");
+  await user.selectOptions(screen.getByLabelText("评测智能体"), "agent");
   return user;
 }
 describe("Evaluation Runs", () => {
@@ -60,15 +60,15 @@ describe("Evaluation Runs", () => {
     render(<EvaluationRuns {...props} />);
     const user = await ready();
     expect(screen.queryByRole("option", { name: "Draft Agent" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Run Evaluation" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "运行评测" })).toBeDisabled();
     await user.click(screen.getByRole("checkbox"));
-    await user.click(screen.getByRole("button", { name: "Run Evaluation" }));
-    await screen.findByText(/Run summary: Captured Dataset/);
+    await user.click(screen.getByRole("button", { name: "运行评测" }));
+    await screen.findByText(/运行概览： Captured Dataset/);
     expect(api.createEvaluationRun).toHaveBeenCalledWith("workspace", "dataset", "agent", true, "token");
-    expect(screen.getByText(/Passed 1, Failed 0, Error 0, Pending 0/)).toBeInTheDocument();
-    expect(screen.getByText(/Knowledge Qa: Not evaluated/i)).toBeInTheDocument();
+    expect(screen.getByText(/通过 1，未通过 0，错误 0，待处理 0/)).toBeInTheDocument();
+    expect(screen.getByText(/知识问答: 未评测/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: result.name }));
-    await screen.findByText(/Dry run only. Would execute/);
+    await screen.findByText(/工具评测仅进行模拟验证/);
     expect(screen.getByText("<b>Captured synthetic input</b>")).toBeInTheDocument();
     expect(document.querySelector("script")).toBeNull();
     expect(api.getRunCase).toHaveBeenCalledWith("workspace", "run", "result", "token");
@@ -77,7 +77,7 @@ describe("Evaluation Runs", () => {
     vi.mocked(api.activeRunCases).mockResolvedValue(Array.from({ length: count }, () => item));
     render(<EvaluationRuns {...props} />);
     await ready();
-    expect(screen.getByRole("button", { name: "Run Evaluation" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "运行评测" })).toBeDisabled();
     expect(api.createEvaluationRun).not.toHaveBeenCalled();
   });
   it("allows local permission cases without provider consent", async () => {
@@ -85,7 +85,7 @@ describe("Evaluation Runs", () => {
     render(<EvaluationRuns {...props} />);
     const user = await ready();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Run Evaluation" }));
+    await user.click(screen.getByRole("button", { name: "运行评测" }));
     await waitFor(() => expect(api.createEvaluationRun).toHaveBeenCalledWith("workspace", "dataset", "agent", false, "token"));
   });
   it("blocks duplicate submit and uses history recovery after an ambiguous timeout", async () => {
@@ -93,14 +93,14 @@ describe("Evaluation Runs", () => {
     vi.mocked(api.createEvaluationRun).mockImplementation(() => new Promise((_, failure) => { reject = failure; }));
     render(<EvaluationRuns {...props} />);
     const user = await ready(); await user.click(screen.getByRole("checkbox"));
-    const submit = screen.getByRole("button", { name: "Run Evaluation" });
+    const submit = screen.getByRole("button", { name: "运行评测" });
     await user.dblClick(submit);
     expect(api.createEvaluationRun).toHaveBeenCalledTimes(1);
     expect(submit).toBeDisabled();
     await act(async () => reject(new Error("timeout")));
     await screen.findByRole("alert");
-    expect(screen.getByRole("alert")).toHaveTextContent("Refresh run history before starting another run");
-    await user.click(screen.getByRole("button", { name: "Refresh run history" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("请先刷新运行记录");
+    await user.click(screen.getByRole("button", { name: "刷新运行记录" }));
     expect(api.createEvaluationRun).toHaveBeenCalledTimes(1);
   });
   it("discards old Workspace responses and clears confidential state", async () => {
@@ -108,11 +108,11 @@ describe("Evaluation Runs", () => {
     vi.mocked(api.createEvaluationRun).mockImplementation(() => new Promise(success => { resolve = success; }));
     const { rerender } = render(<EvaluationRuns {...props} />);
     const user = await ready(); await user.click(screen.getByRole("checkbox"));
-    await user.click(screen.getByRole("button", { name: "Run Evaluation" }));
+    await user.click(screen.getByRole("button", { name: "运行评测" }));
     rerender(<EvaluationRuns {...props} workspaceId="other-workspace" />);
     await act(async () => resolve(run));
-    expect(screen.queryByText(/Run summary/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Evaluation Agent")).toHaveValue("");
+    expect(screen.queryByText(/运行概览/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("评测智能体")).toHaveValue("");
     expect(api.getEvaluationRun).not.toHaveBeenCalled();
   });
 });

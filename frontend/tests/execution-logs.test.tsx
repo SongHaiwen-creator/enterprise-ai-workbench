@@ -62,7 +62,7 @@ function renderLogs(onUnauthorized = vi.fn()) {
   return { user: userEvent.setup(), onUnauthorized };
 }
 
-describe("Execution logs", () => {
+describe("执行日志", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -77,23 +77,23 @@ describe("Execution logs", () => {
     const table = await screen.findByRole("table");
     const rows = within(table).getAllByRole("row");
     expect(rows).toHaveLength(3);
-    expect(within(rows[1]).getByText("Agent request")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("助手请求")).toBeInTheDocument();
     expect(within(rows[1]).getByText("<b>Employee One</b>")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Create IT access request")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("Tool Approval Required")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("1,234 ms")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("2026-09-29 08:00:05 UTC")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("Failed")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("Provider Error")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("工具需要审批")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("1,234 毫秒")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("2026/09/29 16:00:05（北京时间）")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("失败")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("模型服务错误")).toBeInTheDocument();
     expect(mockedList).toHaveBeenCalledWith("workspace-1", {}, EXECUTION_LOG_PAGE_SIZE, 0, "token");
-    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
   });
 
   it("expands one record to show recorded details only", async () => {
     mockedList.mockResolvedValue({ items: [failedKnowledgeLog], limit: 50, offset: 0 });
     const { user } = renderLogs();
 
-    const toggle = await screen.findByRole("button", { name: "Details" });
+    const toggle = await screen.findByRole("button", { name: "详情" });
     await user.click(toggle);
 
     expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -103,11 +103,11 @@ describe("Execution logs", () => {
     expect(scope.getByText("502")).toBeInTheDocument();
     expect(scope.getByText("Travel Policies")).toBeInTheDocument();
     expect(scope.getByText("gpt-5.6-terra")).toBeInTheDocument();
-    expect(scope.getByText("Citations")).toBeInTheDocument();
-    expect(scope.getByText("Not reported")).toBeInTheDocument();
-    expect(scope.queryByText("Requested decision")).not.toBeInTheDocument();
+    expect(scope.getByText("引用来源")).toBeInTheDocument();
+    expect(scope.getByText("未记录")).toBeInTheDocument();
+    expect(scope.queryByText("提交的审批决定")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Hide" }));
+    await user.click(screen.getByRole("button", { name: "收起" }));
     expect(document.getElementById("execution-log-log-2")).toBeNull();
   });
 
@@ -116,8 +116,8 @@ describe("Execution logs", () => {
     const { user } = renderLogs();
     await screen.findByRole("table");
 
-    await user.selectOptions(screen.getByLabelText("Operation"), "approval_decision");
-    await user.selectOptions(screen.getByLabelText("Status"), "failed");
+    await user.selectOptions(screen.getByLabelText("操作类型"), "approval_decision");
+    await user.selectOptions(screen.getByLabelText("状态"), "failed");
 
     await waitFor(() => {
       expect(mockedList).toHaveBeenLastCalledWith(
@@ -139,7 +139,7 @@ describe("Execution logs", () => {
       .mockResolvedValueOnce({ items: [log({ id: "log-last" })], limit: 50, offset: 50 });
     const { user } = renderLogs();
 
-    await user.click(await screen.findByRole("button", { name: "Load more" }));
+    await user.click(await screen.findByRole("button", { name: "加载更多" }));
 
     await waitFor(() => {
       expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(
@@ -149,20 +149,20 @@ describe("Execution logs", () => {
     expect(mockedList).toHaveBeenLastCalledWith(
       "workspace-1", {}, EXECUTION_LOG_PAGE_SIZE, EXECUTION_LOG_PAGE_SIZE, "token",
     );
-    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
   });
 
   it("shows empty, access-denied, and session-expired states", async () => {
     mockedList.mockResolvedValueOnce({ items: [], limit: 50, offset: 0 });
     renderLogs();
-    expect(await screen.findByText("No execution logs match these filters.")).toBeInTheDocument();
+    expect(await screen.findByText("暂无符合筛选条件的执行日志。")).toBeInTheDocument();
     cleanup();
 
     mockedList.mockRejectedValueOnce(new ApiError("Agent administrator role required", 403));
     renderLogs();
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Execution log access denied");
-    expect(alert).toHaveTextContent("Agent administrator role required");
+    expect(alert).toHaveTextContent("没有执行日志访问权限");
+    expect(alert).toHaveTextContent("你没有执行此操作的权限。");
     cleanup();
 
     mockedList.mockRejectedValueOnce(new ApiError("Not authenticated", 401));

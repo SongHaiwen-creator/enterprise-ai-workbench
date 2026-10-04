@@ -645,4 +645,5 @@ assumptions; assertions now scope their own Workspace and the full rerun passed.
 Existing Starlette/Alembic deprecation warnings remain (68 in the full suite).
 Cooperative deadlines, plaintext confidential history and manually reviewed
 synthetic/redacted provider input retain the limits described above. Issue #36
-closed on merge of PR #37; Feature 016 was delivered on 2026-10-03.
+was closed when PR #37 merged into main on 2026-10-03. Feature 016 is delivered;
+this repository state does not imply migration of any runtime database.

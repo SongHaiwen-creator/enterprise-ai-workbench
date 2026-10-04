@@ -1,5 +1,7 @@
 "use client";
 
+import { displayMessage, formatTimestamp, formatEnumLabel } from "@/utils/presentation";
+
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -14,24 +16,24 @@ import {
 } from "@/utils/api";
 
 const DECISION_LABELS: Record<ApprovalDecisionStatus, string> = {
-  pending: "Pending review",
-  approved: "Approved",
-  rejected: "Rejected",
-  cancelled: "Cancelled",
-  expired: "Expired",
-  invalidated: "Invalidated",
+  pending: "待审核",
+  approved: "已批准",
+  rejected: "已拒绝",
+  cancelled: "已取消",
+  expired: "已过期",
+  invalidated: "已失效",
 };
 
 const EXECUTION_LABELS: Record<ApprovalExecutionStatus, string> = {
-  not_started: "Not executed",
-  succeeded: "Executed",
-  failed: "Execution failed",
+  not_started: "未执行",
+  succeeded: "已执行",
+  failed: "执行失败",
 };
 
 const INVALIDATION_LABELS = {
-  requester_ineligible: "The requester is no longer eligible.",
-  capability_unavailable: "The Agent or Tool is no longer available.",
-  configuration_drift: "The Tool configuration changed after the request.",
+  requester_ineligible: "申请人已不再满足操作条件。",
+  capability_unavailable: "智能体或工具已不可用。",
+  configuration_drift: "提交申请后工具配置已发生变化。",
 } as const;
 
 type Failure = { title: string; message: string };
@@ -62,39 +64,33 @@ interface ApprovalsProps {
 function failureFor(error: unknown): Failure {
   if (!(error instanceof ApiError)) {
     return {
-      title: "Approval request failed",
-      message: "We could not complete this request. Try again in a moment.",
+      title: "审批请求失败",
+      message: "无法完成请求，请稍后重试。",
     };
   }
   const title =
-    error.status === 403 ? "Approval access denied" :
-    error.status === 404 ? "Approval not found" :
-    error.status === 409 ? "Approval changed" :
-    error.status === 422 ? "Decision needs revision" :
-    error.status === 502 ? "Execution failed" :
-    error.status === 503 ? "Approval service unavailable" :
-    error.status === 0 ? "Connection unavailable" :
-    "Approval request failed";
-  return { title, message: error.message };
+    error.status === 403 ? "没有审批访问权限" :
+    error.status === 404 ? "审批申请不存在" :
+    error.status === 409 ? "审批状态已变化" :
+    error.status === 422 ? "请检查审批意见" :
+    error.status === 502 ? "执行失败" :
+    error.status === 503 ? "审批服务暂不可用" :
+    error.status === 0 ? "无法连接服务" :
+    "审批请求失败";
+  return { title, message: displayMessage(error.message, error.status) };
 }
 
-function formatTimestamp(value: string): string {
-  return `${new Date(value).toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
 
-function formatValue(value: string): string {
-  return value.replaceAll("_", " ");
-}
 
 function StatusLabels({ approval }: { approval: ApprovalResponse }) {
   return (
     <span className="approval-status-labels">
       <span className={`approval-label decision-${approval.decision_status}`}>
-        <span className="sr-only">Decision: </span>
+        <span className="sr-only">审批决定：</span>
         {DECISION_LABELS[approval.decision_status]}
       </span>
       <span className={`approval-label execution-${approval.execution_status}`}>
-        <span className="sr-only">Execution: </span>
+        <span className="sr-only">执行状态：</span>
         {EXECUTION_LABELS[approval.execution_status]}
       </span>
     </span>
@@ -189,8 +185,8 @@ export function Approvals({
     if (normalizedNote.length > 1000) {
       setActionMessage({
         tone: "error",
-        title: "Decision needs revision",
-        message: "Keep the note to 1,000 characters or fewer.",
+        title: "请检查审批意见",
+        message: "审批意见不能超过 1,000 字。",
       });
       return;
     }
@@ -204,8 +200,8 @@ export function Approvals({
       );
       setActionMessage({
         tone: "success",
-        title: decision === "approve" ? "Approval recorded" : "Rejection recorded",
-        message: "The decision was saved.",
+        title: decision === "approve" ? "批准决定已保存" : "拒绝决定已保存",
+        message: "审批决定已保存，最新状态将从服务端更新。",
       });
       setNote("");
     } catch (error) {
@@ -236,15 +232,14 @@ export function Approvals({
         <section className="qa-context-card" aria-labelledby="approvals-title">
           <div className="qa-heading-row">
             <div>
-              <p className="section-kicker">Human approval</p>
-              <h2 id="approvals-title">Approvals</h2>
+              <p className="section-kicker">人工审核</p>
+              <h2 id="approvals-title">审批中心</h2>
               <p className="muted">
-                Sensitive requests in {workspaceName} wait here until an authorized
-                reviewer decides.
+                {workspaceName} 中的敏感操作申请，在此等待有权限的审核者处理。
               </p>
             </div>
           </div>
-          <div className="approval-scope" role="group" aria-label="Approval list">
+          <div className="approval-scope" role="group" aria-label="审批列表">
             <button
               type="button"
               className={scope === "mine" ? "scope-button active" : "scope-button"}
@@ -252,7 +247,7 @@ export function Approvals({
               onClick={() => changeScope("mine")}
               disabled={actionPending}
             >
-              My requests
+              我的申请
             </button>
             {canReview && (
               <button
@@ -262,13 +257,13 @@ export function Approvals({
                 onClick={() => changeScope("review")}
                 disabled={actionPending}
               >
-                Review queue
+                待我审核
               </button>
             )}
           </div>
 
           {list.kind === "loading" && (
-            <p className="approval-list-state" role="status">Loading approvals…</p>
+            <p className="approval-list-state" role="status">正在加载审批列表…</p>
           )}
           {list.kind === "error" && (
             <div className="approval-list-state error-state" role="alert">
@@ -277,10 +272,10 @@ export function Approvals({
             </div>
           )}
           {list.kind === "loaded" && list.items.length === 0 && (
-            <p className="approval-list-state">No approvals to show.</p>
+            <p className="approval-list-state">暂无审批申请。</p>
           )}
           {list.kind === "loaded" && list.items.length > 0 && (
-            <ul className="approval-list" aria-label="Approvals">
+            <ul className="approval-list" aria-label="审批中心">
               {list.items.map((item) => (
                 <li key={item.id}>
                   <button
@@ -306,17 +301,17 @@ export function Approvals({
       <aside className="sources-panel approval-detail" aria-labelledby="approval-detail-title">
         <div className="sources-heading">
           <div>
-            <p className="section-kicker">Details</p>
-            <h2 id="approval-detail-title">Approval</h2>
+            <p className="section-kicker">详情</p>
+            <h2 id="approval-detail-title">审批详情</h2>
           </div>
         </div>
 
         {detail.kind === "none" && (
           <div className="sources-empty">
-            <p>Select an approval to see what was requested.</p>
+            <p>选择一条申请，查看申请内容和审批结果。</p>
           </div>
         )}
-        {detail.kind === "loading" && <p role="status">Loading approval…</p>}
+        {detail.kind === "loading" && <p role="status">正在加载申请详情…</p>}
         {detail.kind === "error" && (
           <div className="error-state" role="alert">
             <strong>{detail.failure.title}</strong>
@@ -327,32 +322,32 @@ export function Approvals({
           <article className="approval-detail-body" aria-busy={actionPending}>
             <StatusLabels approval={approval} />
             <dl className="tool-result-grid approval-fields">
-              <div><dt>Capability</dt><dd>{approval.tool.name}</dd></div>
-              <div><dt>Agent</dt><dd>{approval.agent.name}</dd></div>
-              <div><dt>Requester</dt><dd>{approval.requester.name}</dd></div>
-              <div><dt>System</dt><dd>{formatValue(approval.arguments.system)}</dd></div>
-              <div><dt>Access level</dt><dd>{formatValue(approval.arguments.access_level)}</dd></div>
-              <div><dt>Duration</dt><dd>{approval.arguments.duration_days} days</dd></div>
+              <div><dt>业务能力</dt><dd>{approval.tool.name}</dd></div>
+              <div><dt>智能体</dt><dd>{approval.agent.name}</dd></div>
+              <div><dt>申请人</dt><dd>{approval.requester.name}</dd></div>
+              <div><dt>目标系统</dt><dd>{formatEnumLabel(approval.arguments.system)}</dd></div>
+              <div><dt>访问级别</dt><dd>{formatEnumLabel(approval.arguments.access_level)}</dd></div>
+              <div><dt>有效期限</dt><dd>{approval.arguments.duration_days} 天</dd></div>
               <div className="tool-result-wide">
-                <dt>Business justification</dt>
+                <dt>申请理由</dt>
                 <dd className="literal-text">{approval.arguments.business_justification}</dd>
               </div>
-              <div><dt>Requested</dt><dd>{formatTimestamp(approval.created_at)}</dd></div>
-              <div><dt>Expires</dt><dd>{formatTimestamp(approval.expires_at)}</dd></div>
+              <div><dt>申请时间</dt><dd>{formatTimestamp(approval.created_at)}</dd></div>
+              <div><dt>到期时间</dt><dd>{formatTimestamp(approval.expires_at)}</dd></div>
             </dl>
 
             {approval.decision && (
-              <section className="approval-section" aria-label="Decision">
-                <h3>Decision</h3>
+              <section className="approval-section" aria-label="审批决定">
+                <h3>审批决定</h3>
                 <p>
                   {approval.decision.decided_by
-                    ? `${DECISION_LABELS[approval.decision_status]} by ${approval.decision.decided_by.name}`
-                    : `${DECISION_LABELS[approval.decision_status]} by the system`}
+                    ? `${DECISION_LABELS[approval.decision_status]} · 审核者：${approval.decision.decided_by.name}`
+                    : `${DECISION_LABELS[approval.decision_status]} · 系统处理`}
                   {" · "}
                   {formatTimestamp(approval.decision.decided_at)}
                 </p>
                 {approval.decision.invalidation_reason && (
-                  <p>{INVALIDATION_LABELS[approval.decision.invalidation_reason]} Submit a new request.</p>
+                  <p>{INVALIDATION_LABELS[approval.decision.invalidation_reason]} 请提交新的申请。</p>
                 )}
                 {approval.decision.note && (
                   <p className="literal-text">{approval.decision.note}</p>
@@ -361,26 +356,23 @@ export function Approvals({
             )}
 
             {approval.execution && (
-              <section className="approval-section" aria-label="Execution">
-                <h3>Execution</h3>
+              <section className="approval-section" aria-label="执行结果">
+                <h3>执行结果</h3>
                 {approval.execution.result ? (
                   <p>
-                    Mock IT access request {approval.execution.result.reference} recorded
+                    模拟 IT 权限申请 {approval.execution.result.reference} 已记录
                     {" · "}
                     {formatTimestamp(approval.execution.executed_at)}
                   </p>
                 ) : (
-                  <p>
-                    The approved request could not be executed (adapter error). It will not be
-                    retried automatically.
-                  </p>
+                  <p>申请已批准，但执行服务返回错误，操作未能完成。系统不会自动重试。</p>
                 )}
               </section>
             )}
 
             {canDecide && (
               <div className="approval-actions">
-                <label htmlFor="approval-note">Note (optional)</label>
+                <label htmlFor="approval-note">审批意见（可选）</label>
                 <textarea
                   id="approval-note"
                   value={note}
@@ -396,7 +388,7 @@ export function Approvals({
                     onClick={() => void submitDecision("approve")}
                     disabled={actionPending}
                   >
-                    {actionPending ? "Saving…" : "Approve"}
+                    {actionPending ? "正在保存…" : "批准"}
                   </button>
                   <button
                     type="button"
@@ -404,7 +396,7 @@ export function Approvals({
                     onClick={() => void submitDecision("reject")}
                     disabled={actionPending}
                   >
-                    Reject
+                    拒绝
                   </button>
                 </div>
               </div>

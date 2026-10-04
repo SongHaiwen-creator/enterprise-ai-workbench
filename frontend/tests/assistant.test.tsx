@@ -162,12 +162,12 @@ function renderAssistant(overrides: Partial<React.ComponentProps<typeof Assistan
 
 async function submitRequest(request: string) {
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText("Request"), request);
-  await user.click(screen.getByRole("button", { name: "Route request" }));
+  await user.type(screen.getByLabelText("请求内容"), request);
+  await user.click(screen.getByRole("button", { name: "发送请求" }));
   return user;
 }
 
-describe("Assistant", () => {
+describe("智能助手", () => {
   beforeEach(() => mockedRoute.mockReset());
   afterEach(cleanup);
 
@@ -178,14 +178,14 @@ describe("Assistant", () => {
     expect(screen.getByRole("option", { name: "Employee Assistant" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Draft Agent" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Archived guide" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Knowledge context (optional)")).toHaveValue("kb-1");
+    expect(screen.getByLabelText("知识库（可选）")).toHaveValue("kb-1");
 
     const user = await submitRequest(answer.question);
     expect(await screen.findByText(answer.answer!)).toBeInTheDocument();
     expect(mockedRoute).toHaveBeenCalledWith(
       "workspace-1", "agent-1", answer.question, "kb-1", "test-token",
     );
-    expect(screen.getByText("Chunk 4 · Version 2")).toBeInTheDocument();
+    expect(screen.getByText("片段 4 · 版本 2")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "travel-policy.md" }))
       .getByText(answer.citations[0].excerpt)).toBeInTheDocument();
 
@@ -198,11 +198,11 @@ describe("Assistant", () => {
     mockedRoute.mockResolvedValue(toolResponse);
     renderAssistant({ knowledgeBases: [] });
 
-    expect(screen.getByText(/No active knowledge base is available/i)).toBeInTheDocument();
+    expect(screen.getByText(/暂无已启用的知识库/)).toBeInTheDocument();
     await submitRequest(toolResponse.request);
 
-    expect(await screen.findByText("No action was executed")).toBeInTheDocument();
-    expect(screen.getByText(toolResponse.outcome.message)).toBeInTheDocument();
+    expect(await screen.findByText("未执行任何操作")).toBeInTheDocument();
+    expect(screen.getByText("没有已授权的企业工具能够安全处理此请求。")).toBeInTheDocument();
     expect(mockedRoute).toHaveBeenCalledWith(
       "workspace-1", "agent-1", toolResponse.request, null, "test-token",
     );
@@ -234,10 +234,10 @@ describe("Assistant", () => {
     renderAssistant({ knowledgeBases: [] });
     await submitRequest("Check my reimbursement");
 
-    expect(await screen.findByText("Capability completed successfully")).toBeInTheDocument();
+    expect(await screen.findByText("业务查询已完成")).toBeInTheDocument();
     expect(screen.getByText("REIM-2F40A831")).toBeInTheDocument();
     expect(screen.getByText("128.00 CNY")).toBeInTheDocument();
-    expect(screen.getByText("under review")).toBeInTheDocument();
+    expect(screen.getByText("审核中")).toBeInTheDocument();
     expect(screen.queryByText(/tool_key/i)).not.toBeInTheDocument();
   });
 
@@ -299,17 +299,17 @@ describe("Assistant", () => {
     renderAssistant();
     await submitRequest("Request production access");
 
-    expect(await screen.findByText("Approval required — not executed")).toBeInTheDocument();
-    expect(screen.getByText("production database")).toBeInTheDocument();
-    expect(screen.getByText("14 days")).toBeInTheDocument();
+    expect(await screen.findByText("等待人工审批 · 尚未执行")).toBeInTheDocument();
+    expect(screen.getByText("生产数据库")).toBeInTheDocument();
+    expect(screen.getByText("14 天")).toBeInTheDocument();
     expect(screen.getByText("Investigate approved production incidents.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /approve|reject|cancel/i }))
+    expect(screen.queryByRole("button", { name: /批准|拒绝|取消/ }))
       .not.toBeInTheDocument();
     expect(screen.getByText(
-      "Approval ID approval-123 · Decision pending · Execution not started",
+      "审批编号 approval-123 · 审批决定 待处理 · 执行状态 未执行",
     )).toBeInTheDocument();
     expect(screen.getByText(
-      "An approval request was submitted for human review. Nothing was executed.",
+      "申请已提交，等待人工审核。尚未执行任何操作。",
     )).toBeInTheDocument();
   });
 
@@ -328,8 +328,8 @@ describe("Assistant", () => {
     });
 
     await submitRequest("Write a wedding speech");
-    expect(await screen.findByText("This Agent cannot handle that request")).toBeInTheDocument();
-    expect(screen.getByText("This request is outside the configured Agent capabilities."))
+    expect(await screen.findByText("当前智能体无法处理此请求")).toBeInTheDocument();
+    expect(screen.getByText("此请求超出了当前智能体配置的能力范围。"))
       .toBeInTheDocument();
     expect(mockedRoute).toHaveBeenCalledWith(
       "workspace-1", "agent-1", "Write a wedding speech", null, "test-token",
@@ -345,17 +345,17 @@ describe("Assistant", () => {
     renderAssistant();
     const user = userEvent.setup();
 
-    await user.selectOptions(screen.getByLabelText("Knowledge context (optional)"), "");
+    await user.selectOptions(screen.getByLabelText("知识库（可选）"), "");
     await submitRequest(answer.question);
-    expect(await screen.findByText("Select a knowledge base for this question"))
+    expect(await screen.findByText("请为此问题选择知识库"))
       .toBeInTheDocument();
-    expect(screen.getByLabelText("Request")).toHaveValue(answer.question);
+    expect(screen.getByLabelText("请求内容")).toHaveValue(answer.question);
     expect(mockedRoute).toHaveBeenNthCalledWith(
       1, "workspace-1", "agent-1", answer.question, null, "test-token",
     );
 
-    await user.selectOptions(screen.getByLabelText("Knowledge context (optional)"), "kb-2");
-    await user.click(screen.getByRole("button", { name: "Route request" }));
+    await user.selectOptions(screen.getByLabelText("知识库（可选）"), "kb-2");
+    await user.click(screen.getByRole("button", { name: "发送请求" }));
     expect(await screen.findByText(answer.answer!)).toBeInTheDocument();
     expect(mockedRoute).toHaveBeenNthCalledWith(
       2, "workspace-1", "agent-1", answer.question, "kb-2", "test-token",
@@ -376,10 +376,10 @@ describe("Assistant", () => {
     renderAssistant();
     await submitRequest(answer.question);
 
-    expect(await screen.findByText("The selected knowledge base cannot support an answer"))
+    expect(await screen.findByText("当前知识库没有足够资料支持回答"))
       .toBeInTheDocument();
     expect(screen.getByText(/does not contain enough evidence/i)).toBeInTheDocument();
-    expect(screen.queryByText("This Agent cannot handle that request")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前智能体无法处理此请求")).not.toBeInTheDocument();
   });
 
   it("blocks duplicate submissions and selection changes while routing", async () => {
@@ -388,23 +388,23 @@ describe("Assistant", () => {
     const { props } = renderAssistant();
     const user = await submitRequest("Check my claim");
 
-    expect(screen.getByRole("button", { name: "Routing request…" })).toBeDisabled();
-    expect(screen.getByLabelText("Request")).toBeDisabled();
-    expect(screen.getByLabelText("Agent")).toBeDisabled();
-    expect(screen.getByLabelText("Knowledge context (optional)")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "正在处理…" })).toBeDisabled();
+    expect(screen.getByLabelText("请求内容")).toBeDisabled();
+    expect(screen.getByLabelText("智能体")).toBeDisabled();
+    expect(screen.getByLabelText("知识库（可选）")).toBeDisabled();
     expect(props.onPendingChange).toHaveBeenCalledWith(true);
-    await user.click(screen.getByRole("button", { name: "Routing request…" }));
+    await user.click(screen.getByRole("button", { name: "正在处理…" }));
     expect(mockedRoute).toHaveBeenCalledTimes(1);
 
     resolveRoute(toolResponse);
-    expect(await screen.findByText("No action was executed")).toBeInTheDocument();
+    expect(await screen.findByText("未执行任何操作")).toBeInTheDocument();
     await waitFor(() => expect(props.onPendingChange).toHaveBeenLastCalledWith(false));
   });
 
   it("shows an empty Agent state, list failure, and retry control", async () => {
     const first = renderAssistant({ agents: [] });
-    expect(screen.getByText("No active agents are available")).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Refresh agents" }));
+    expect(screen.getByText("暂无已启用的智能体")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "刷新智能体" }));
     expect(first.props.onRetryAgents).toHaveBeenCalledOnce();
     first.unmount();
 
@@ -412,39 +412,39 @@ describe("Assistant", () => {
       agents: [],
       agentsError: { kind: "forbidden", message: "No access" },
     });
-    expect(screen.getByText("Assistant access denied")).toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Try again" }));
+    expect(screen.getByText("没有智能助手访问权限")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "重试" }));
     expect(second.props.onRetryAgents).toHaveBeenCalledOnce();
   });
 
   it.each([
-    [403, "Assistant access denied"],
-    [404, "Agent or knowledge context not found"],
-    [409, "Agent or knowledge context unavailable"],
-    [422, "Request needs revision"],
-    [502, "Assistant service unavailable"],
-    [503, "Assistant service unavailable"],
-    [0, "Connection unavailable"],
+    [403, "没有智能助手访问权限"],
+    [404, "智能体或知识库不存在"],
+    [409, "智能体或知识库暂不可用"],
+    [422, "请检查请求内容"],
+    [502, "智能助手服务暂不可用"],
+    [503, "智能助手服务暂不可用"],
+    [0, "无法连接服务"],
   ])("renders a recoverable %i routing error", async (status, title) => {
-    mockedRoute.mockRejectedValueOnce(new ApiError("Safe server detail", status));
+    mockedRoute.mockRejectedValueOnce(new ApiError("服务端安全提示", status));
     renderAssistant();
     await submitRequest("Check my claim");
 
     expect(await screen.findByText(title)).toBeInTheDocument();
-    expect(screen.getByText("Safe server detail")).toBeInTheDocument();
-    expect(screen.getByLabelText("Request")).toHaveValue("Check my claim");
+    expect(screen.getByText("服务端安全提示")).toBeInTheDocument();
+    expect(screen.getByLabelText("请求内容")).toHaveValue("Check my claim");
   });
 
   it("clears the session on 401 and validates request text before routing", async () => {
-    mockedRoute.mockRejectedValueOnce(new ApiError("Expired", 401));
+    mockedRoute.mockRejectedValueOnce(new ApiError("已过期", 401));
     const { props } = renderAssistant();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Route request" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Enter a request");
+    await user.click(screen.getByRole("button", { name: "发送请求" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("请先输入请求");
     expect(mockedRoute).not.toHaveBeenCalled();
 
-    await user.type(screen.getByLabelText("Request"), "Check my claim");
-    await user.click(screen.getByRole("button", { name: "Route request" }));
+    await user.type(screen.getByLabelText("请求内容"), "Check my claim");
+    await user.click(screen.getByRole("button", { name: "发送请求" }));
     await waitFor(() => expect(props.onUnauthorized).toHaveBeenCalledOnce());
   });
 });

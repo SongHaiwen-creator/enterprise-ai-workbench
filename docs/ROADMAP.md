@@ -225,6 +225,7 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
 Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
 Feature 016 Evaluation Run & Metrics merged/delivered in PR #37 on 2026-10-03;
+Feature 017 Chinese UI Refresh merged/delivered in PR #41 on 2026-10-04;
 Bad Case Management and version comparison remain unfinished)
 
 Goal:
@@ -253,7 +254,7 @@ Delivered Phase B includes typed Dataset/Case CRUD, administrative UI, and addit
 migration `0011`, with verification recorded in its specification. PR #35 is
 merged and Issue #34 is closed. Repository migration head does not guarantee
 the revision of any runtime database.
-Evaluation execution and metrics are reserved for Feature 016.
+Evaluation execution and metrics are delivered separately in Feature 016.
 
 Support evaluation cases for:
 
@@ -280,6 +281,17 @@ database upgrade. Metrics supported by current structured Case expectations are:
 Semantic answer correctness, citation correctness and retrieval relevance require
 ground truth not present in Feature 015 and are deferred. Tool adapter execution,
 Approval creation, semantic judging and version comparison are outside Feature 016.
+
+### Chinese UI Refresh (Feature 017)
+
+User-prioritized presentation scope: `docs/features/017-chinese-ui-refresh.md`,
+Issue #39, branch `feat/chinese-ui-refresh`. Public Chinese product introduction
+at `/`, existing platform at `/app` with Assistant as the default, shared blue
+and white styling, grouped navigation and mobile drawer. Existing Feature 016
+run/metrics UI is included. No new product capabilities, migrations or
+permission-policy changes; Bad Case Management remains the next unfinished
+product capability. Required verification passed; PR #41 is ready for human
+review. Delivery awaits human merge.
 
 ### Bad Case Management
 

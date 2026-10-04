@@ -93,12 +93,12 @@ function renderKnowledgeQA(overrides: Partial<React.ComponentProps<typeof Knowle
 
 async function askQuestion(question = answeredResponse.question) {
   const user = userEvent.setup();
-  await user.type(screen.getByLabelText("Question"), question);
-  await user.click(screen.getByRole("button", { name: /ask knowledge/i }));
+  await user.type(screen.getByLabelText("问题"), question);
+  await user.click(screen.getByRole("button", { name: /提交问题/ }));
   return user;
 }
 
-describe("Knowledge Q&A", () => {
+describe("知识问答", () => {
   beforeEach(() => mockedAnswer.mockReset());
   afterEach(cleanup);
 
@@ -110,8 +110,8 @@ describe("Knowledge Q&A", () => {
 
     expect(await screen.findByText(answeredResponse.answer!)).toBeInTheDocument();
     expect(screen.getAllByText("travel-policy.md")).toHaveLength(2);
-    expect(screen.getByText("Chunk 4 · Version 2")).toBeInTheDocument();
-    expect(screen.getByText(/2 sources/i)).toBeInTheDocument();
+    expect(screen.getByText("片段 4 · 版本 2")).toBeInTheDocument();
+    expect(screen.getByText(/2 个来源/)).toBeInTheDocument();
     expect(mockedAnswer).toHaveBeenCalledWith(
       "workspace-1",
       "kb-policies",
@@ -125,15 +125,15 @@ describe("Knowledge Q&A", () => {
       ...answeredResponse,
       status: "unsupported",
       answer: null,
-      message: "The retrieved knowledge does not contain enough evidence to answer this question.",
+      message: "检索到的资料不足以支持回答此问题。",
       citations: [],
     });
     renderKnowledgeQA();
 
     await askQuestion("What is not documented?");
 
-    expect(await screen.findByText("This knowledge base cannot support an answer")).toBeInTheDocument();
-    expect(screen.getByText(/does not contain enough evidence/i)).toBeInTheDocument();
+    expect(await screen.findByText("当前知识库没有足够资料支持回答")).toBeInTheDocument();
+    expect(screen.getByText(/资料不足以支持回答/)).toBeInTheDocument();
     expect(screen.queryByText("travel-policy.md")).not.toBeInTheDocument();
   });
 
@@ -143,11 +143,11 @@ describe("Knowledge Q&A", () => {
     const { props } = renderKnowledgeQA();
 
     const user = await askQuestion();
-    const pendingButton = screen.getByRole("button", { name: /finding answer/i });
+    const pendingButton = screen.getByRole("button", { name: /正在查找答案/ });
 
     expect(pendingButton).toBeDisabled();
-    expect(screen.getByLabelText("Question")).toBeDisabled();
-    expect(screen.getByText("Building a grounded answer")).toBeInTheDocument();
+    expect(screen.getByLabelText("问题")).toBeDisabled();
+    expect(screen.getByText("正在整理回答与引用")).toBeInTheDocument();
     await user.click(pendingButton);
     expect(mockedAnswer).toHaveBeenCalledTimes(1);
     expect(props.onPendingChange).toHaveBeenCalledWith(true);
@@ -162,7 +162,7 @@ describe("Knowledge Q&A", () => {
       knowledgeBasesError: { kind: "error", message: "Service temporarily unavailable." },
     });
 
-    expect(screen.getByText("We could not load your knowledge bases")).toBeInTheDocument();
+    expect(screen.getByText("无法加载知识库")).toBeInTheDocument();
     expect(screen.getByText("Service temporarily unavailable.")).toBeInTheDocument();
   });
 
@@ -171,9 +171,9 @@ describe("Knowledge Q&A", () => {
     renderKnowledgeQA();
     const user = userEvent.setup();
 
-    await user.selectOptions(screen.getByLabelText("Knowledge base"), "kb-operations");
-    await user.type(screen.getByLabelText("Question"), "How do operations work?");
-    await user.click(screen.getByRole("button", { name: /ask knowledge/i }));
+    await user.selectOptions(screen.getByLabelText("知识库"), "kb-operations");
+    await user.type(screen.getByLabelText("问题"), "How do operations work?");
+    await user.click(screen.getByRole("button", { name: /提交问题/ }));
 
     expect(mockedAnswer).toHaveBeenCalledWith(
       "workspace-1",
@@ -187,7 +187,7 @@ describe("Knowledge Q&A", () => {
     mockedAnswer.mockResolvedValue(answeredResponse);
     const first = renderKnowledgeQA();
     const user = userEvent.setup();
-    await user.selectOptions(screen.getByLabelText("Knowledge base"), "kb-operations");
+    await user.selectOptions(screen.getByLabelText("知识库"), "kb-operations");
     await askQuestion();
     expect(await screen.findByText(answeredResponse.answer!)).toBeInTheDocument();
 
@@ -207,8 +207,8 @@ describe("Knowledge Q&A", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Knowledge base")).toHaveValue("kb-finance");
-    expect(screen.getByText("Your grounded answer will appear here")).toBeInTheDocument();
+    expect(screen.getByLabelText("知识库")).toHaveValue("kb-finance");
+    expect(screen.getByText("有依据的回答将显示在这里")).toBeInTheDocument();
     expect(screen.queryByText(answeredResponse.answer!)).not.toBeInTheDocument();
   });
 
@@ -223,14 +223,14 @@ describe("Knowledge Q&A", () => {
     await user.click(screen.getByRole("button", { name: /expense-guide\.pdf/i }));
     const updatedInspector = screen.getByRole("region", { name: "expense-guide.pdf" });
     expect(within(updatedInspector).getByText(answeredResponse.citations[1].excerpt)).toBeInTheDocument();
-    expect(within(updatedInspector).getByText(/Chunk 8/)).toBeInTheDocument();
+    expect(within(updatedInspector).getByText(/片段 8/)).toBeInTheDocument();
   });
 
   it("distinguishes forbidden and expired authorization", async () => {
     mockedAnswer.mockRejectedValueOnce(new ApiError("Not authorized for this workspace", 403));
     const first = renderKnowledgeQA();
     await askQuestion();
-    expect(await screen.findByText("You cannot use this knowledge base")).toBeInTheDocument();
+    expect(await screen.findByText("你无法使用此知识库")).toBeInTheDocument();
     expect(first.props.onUnauthorized).not.toHaveBeenCalled();
     first.unmount();
 
@@ -245,8 +245,8 @@ describe("Knowledge Q&A", () => {
       knowledgeBases: [{ ...knowledgeBases[0], status: "disabled" }],
     });
 
-    expect(screen.getByText("Knowledge base disabled")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Question")).not.toBeInTheDocument();
+    expect(screen.getByText("知识库已停用")).toBeInTheDocument();
+    expect(screen.queryByLabelText("问题")).not.toBeInTheDocument();
     expect(mockedAnswer).not.toHaveBeenCalled();
   });
 
@@ -254,9 +254,9 @@ describe("Knowledge Q&A", () => {
     renderKnowledgeQA();
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: /ask knowledge/i }));
+    await user.click(screen.getByRole("button", { name: /提交问题/ }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Enter a question");
+    expect(screen.getByRole("alert")).toHaveTextContent("请先输入问题");
     expect(mockedAnswer).not.toHaveBeenCalled();
   });
 });

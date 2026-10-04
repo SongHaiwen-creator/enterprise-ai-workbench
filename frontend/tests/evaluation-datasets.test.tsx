@@ -48,8 +48,8 @@ afterEach(cleanup);
 
 async function openDataset() {
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Synthetic dataset (active)" }));
-  await screen.findByRole("button", { name: /alert\(1\).*Refusal Behavior/ });
+  await user.click(await screen.findByRole("button", { name: "Synthetic dataset （已启用）" }));
+  await screen.findByRole("button", { name: /alert\(1\).*拒绝行为/ });
   return user;
 }
 
@@ -58,32 +58,32 @@ describe("Evaluation dataset administration", () => {
     render(<EvaluationDatasets {...props} />);
     const user = userEvent.setup();
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
-    await user.type(screen.getByLabelText("Dataset name"), " New dataset ");
-    await user.click(screen.getByRole("button", { name: "Create dataset" }));
+    await user.type(screen.getByLabelText("数据集名称"), " New dataset ");
+    await user.click(screen.getByRole("button", { name: "创建数据集" }));
     await waitFor(() => expect(api.createEvaluationDataset).toHaveBeenCalledWith("workspace-1", { name: "New dataset", description: null }, "token"));
-    await screen.findByRole("button", { name: "Save dataset" });
-    await user.selectOptions(screen.getByLabelText("Dataset status"), "disabled");
-    await user.click(screen.getByRole("button", { name: "Save dataset" }));
+    await screen.findByRole("button", { name: "保存数据集" });
+    await user.selectOptions(screen.getByLabelText("数据集状态"), "disabled");
+    await user.click(screen.getByRole("button", { name: "保存数据集" }));
     await waitFor(() => expect(api.updateEvaluationDataset).toHaveBeenCalledWith("workspace-1", "dataset-1", expect.objectContaining({ status: "disabled" }), "token"));
   });
 
   it.each(["knowledge_qa", "tool_calling", "permission_boundary", "refusal_behavior"] as const)("creates %s using its typed form", async category => {
     render(<EvaluationDatasets {...props} />);
     const user = await openDataset();
-    await user.click(screen.getByRole("button", { name: "New case" }));
-    await user.selectOptions(screen.getByLabelText("Case category"), category);
-    await user.type(screen.getByLabelText("Case name"), "Synthetic case");
-    await user.type(screen.getByLabelText("Test input"), "Synthetic request");
+    await user.click(screen.getByRole("button", { name: "新建用例" }));
+    await user.selectOptions(screen.getByLabelText("用例类型"), category);
+    await user.type(screen.getByLabelText("用例名称"), "Synthetic case");
+    await user.type(screen.getByLabelText("测试输入"), "Synthetic request");
     if (category === "knowledge_qa") {
-      expect(screen.getByRole("option", { name: "Disabled KB (disabled)" })).toBeInTheDocument();
-      await user.selectOptions(screen.getByLabelText("Knowledge base context"), "kb-1");
+      expect(screen.getByRole("option", { name: "Disabled KB （已停用）" })).toBeInTheDocument();
+      await user.selectOptions(screen.getByLabelText("关联知识库"), "kb-1");
     }
     if (category === "tool_calling") {
-      await user.selectOptions(screen.getByLabelText("Expected tool outcome"), "approval_required");
-      expect(screen.queryByRole("option", { name: "Read tool (disabled)" })).not.toBeInTheDocument();
-      await user.selectOptions(screen.getByLabelText("Tool context"), "tool-2");
+      await user.selectOptions(screen.getByLabelText("预期工具结果"), "approval_required");
+      expect(screen.queryByRole("option", { name: "Read tool （已停用）" })).not.toBeInTheDocument();
+      await user.selectOptions(screen.getByLabelText("关联工具"), "tool-2");
     }
-    await user.click(screen.getByRole("button", { name: "Create case" }));
+    await user.click(screen.getByRole("button", { name: "创建用例" }));
     await waitFor(() => expect(api.createEvaluationCase).toHaveBeenCalledTimes(1));
     const payload = vi.mocked(api.createEvaluationCase).mock.calls[0][2];
     expect(payload).toMatchObject({ case_type: category, name: "Synthetic case", test_input: "Synthetic request" });
@@ -91,18 +91,18 @@ describe("Evaluation dataset administration", () => {
     expect(payload).not.toHaveProperty("created_by");
     if (category === "tool_calling") expect(payload.expected_behavior).toMatchObject({ approval_required: true, tool_key: "create_it_access_request" });
     if (category === "permission_boundary") expect(payload.expected_behavior).toMatchObject({ access_denied: true, expected_http_status: 404 });
-    expect(screen.queryByRole("button", { name: /run|score/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /运行|评分/ })).not.toBeInTheDocument();
   });
 
   it("loads literal content and edits status without changing category", async () => {
     const { container } = render(<EvaluationDatasets {...props} />);
     const user = await openDataset();
     expect(container.querySelector("script")).toBeNull();
-    await user.click(screen.getByRole("button", { name: /alert\(1\).*Refusal Behavior/ }));
-    expect(await screen.findByLabelText("Test input")).toHaveValue("<b>Synthetic input</b>");
-    expect(screen.queryByLabelText("Case category")).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Case status"), "disabled");
-    await user.click(screen.getByRole("button", { name: "Save case" }));
+    await user.click(screen.getByRole("button", { name: /alert\(1\).*拒绝行为/ }));
+    expect(await screen.findByLabelText("测试输入")).toHaveValue("<b>Synthetic input</b>");
+    expect(screen.queryByLabelText("用例类型")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("用例状态"), "disabled");
+    await user.click(screen.getByRole("button", { name: "保存用例" }));
     await waitFor(() => expect(api.updateEvaluationCase).toHaveBeenCalled());
     const payload = vi.mocked(api.updateEvaluationCase).mock.calls[0][3];
     expect(payload.status).toBe("disabled");
@@ -114,22 +114,22 @@ describe("Evaluation dataset administration", () => {
     vi.mocked(api.listEvaluationDatasets).mockResolvedValue(page([{ ...dataset, status: "disabled" }]));
     render(<EvaluationDatasets {...props} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Synthetic dataset (disabled)" }));
+    await user.click(await screen.findByRole("button", { name: "Synthetic dataset （已停用）" }));
     await screen.findByRole("button", { name: /alert\(1\)/ });
-    expect(screen.getByRole("button", { name: "New case" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "新建用例" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: /alert\(1\)/ }));
-    expect(await screen.findByRole("button", { name: "Save case" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "保存用例" })).toBeEnabled();
   });
 
   it.each([403, 404, 409, 422, 500, 0])("shows recoverable %s errors without erasing input", async status => {
     render(<EvaluationDatasets {...props} />);
     const user = await openDataset();
     await user.click(screen.getByRole("button", { name: /alert\(1\)/ }));
-    await screen.findByRole("button", { name: "Save case" });
-    vi.mocked(api.updateEvaluationCase).mockRejectedValue(new ApiError("Safe error", status));
-    await user.click(screen.getByRole("button", { name: "Save case" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Safe error");
-    expect(screen.getByLabelText("Test input")).toHaveValue(item.test_input);
+    await screen.findByRole("button", { name: "保存用例" });
+    vi.mocked(api.updateEvaluationCase).mockRejectedValue(new ApiError("安全错误提示", status));
+    await user.click(screen.getByRole("button", { name: "保存用例" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("安全错误提示");
+    expect(screen.getByLabelText("测试输入")).toHaveValue(item.test_input);
   });
 
   it("clears authentication on 401", async () => {
@@ -143,14 +143,14 @@ describe("Evaluation dataset administration", () => {
     vi.mocked(api.listEvaluationCases).mockResolvedValueOnce(page(Array.from({ length: 50 }, (_, index) => ({ ...item, id: `case-${index}` })))).mockResolvedValue(page([]));
     render(<EvaluationDatasets {...props} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "More datasets" }));
+    await user.click(await screen.findByRole("button", { name: "加载更多数据集" }));
     await waitFor(() => expect(api.listEvaluationDatasets).toHaveBeenCalledWith("workspace-1", 50, "token"));
-    await user.click(screen.getAllByRole("button", { name: "Synthetic dataset (active)" })[0]);
-    await user.click(await screen.findByRole("button", { name: "More cases" }));
+    await user.click(screen.getAllByRole("button", { name: "Synthetic dataset （已启用）" })[0]);
+    await user.click(await screen.findByRole("button", { name: "加载更多用例" }));
     await waitFor(() => expect(api.listEvaluationCases).toHaveBeenCalledWith("workspace-1", "dataset-0", 50, "token"));
     cleanup();
     render(<EvaluationDatasets {...props} />);
-    expect(await screen.findByText("No evaluation datasets yet.")).toBeInTheDocument();
+    expect(await screen.findByText("暂无评测数据集。")).toBeInTheDocument();
   });
 
   it("blocks duplicate submissions while a write is pending", async () => {
@@ -159,10 +159,10 @@ describe("Evaluation dataset administration", () => {
     render(<EvaluationDatasets {...props} />);
     const user = userEvent.setup();
     await waitFor(() => expect(screen.queryByRole("status")).not.toBeInTheDocument());
-    await user.type(screen.getByLabelText("Dataset name"), "Synthetic");
-    await user.dblClick(screen.getByRole("button", { name: "Create dataset" }));
+    await user.type(screen.getByLabelText("数据集名称"), "Synthetic");
+    await user.dblClick(screen.getByRole("button", { name: "创建数据集" }));
     expect(api.createEvaluationDataset).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "Create dataset" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建数据集" })).toBeDisabled();
     await act(async () => finish(dataset));
   });
 
@@ -174,11 +174,11 @@ describe("Evaluation dataset administration", () => {
     await user.click(screen.getByRole("button", { name: /alert\(1\)/ }));
     vi.mocked(api.listEvaluationDatasets).mockResolvedValue(page([]));
     rerender(<EvaluationDatasets {...props} workspaceId="workspace-2" />);
-    await screen.findByText("No evaluation datasets yet.");
+    await screen.findByText("暂无评测数据集。");
     await act(async () => finish(item));
-    expect(screen.queryByLabelText("Test input")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("测试输入")).not.toBeInTheDocument();
     rerender(<EvaluationDatasets {...props} accessToken="new-session" />);
-    await screen.findByText("No evaluation datasets yet.");
-    expect(screen.queryByLabelText("Test input")).not.toBeInTheDocument();
+    await screen.findByText("暂无评测数据集。");
+    expect(screen.queryByLabelText("测试输入")).not.toBeInTheDocument();
   });
 });
