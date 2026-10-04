@@ -1,6 +1,6 @@
 # Feature 017 - Chinese UI Refresh
 
-Status: Implemented; draft PR #41; PostgreSQL regression pending
+Status: Implemented and verified; PR #41 ready for human review and merge
 Baseline: main at `746fbeb9580fed6719abd9d7014297151aaa55f8`
 Branch: `feat/chinese-ui-refresh`
 Risk: Normal - presentation changes only
@@ -94,6 +94,6 @@ The user approved both visual prototypes and explicitly requested the complete
 implementation plan in this chat. No additional design approval is required.
 GitHub Issue: [#39](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/39).
 Implementation branch: `feat/chinese-ui-refresh`.
-Draft PR: [#41](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/41).
+PR: [#41](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/41).
 Verification and screenshots: [017-chinese-ui-refresh-verification.md](017-chinese-ui-refresh-verification.md).
-Status: implemented; PostgreSQL regression and human merge pending.
+Status: implemented and verified; human review and merge pending.

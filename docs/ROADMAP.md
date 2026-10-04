@@ -290,7 +290,8 @@ at `/`, existing platform at `/app` with Assistant as the default, shared blue
 and white styling, grouped navigation and mobile drawer. Existing Feature 016
 run/metrics UI is included. No new product capabilities, migrations or
 permission-policy changes; Bad Case Management remains the next unfinished
-product capability. Delivery awaits required verification and human merge.
+product capability. Required verification passed; PR #41 is ready for human
+review. Delivery awaits human merge.
 
 ### Bad Case Management
 

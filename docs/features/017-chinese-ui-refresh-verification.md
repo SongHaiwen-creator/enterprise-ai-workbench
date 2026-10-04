@@ -1,8 +1,8 @@
 # Feature 017 — Verification and Screenshots
 
 Date: 2026-10-04 (Asia/Shanghai). Issue: [#39](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/39).
-Draft PR: [#41](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/41).
-Implementation commit: `cc3e010`. Branch has been pushed; PR remains draft until PostgreSQL regression passes.
+PR: [#41](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/41).
+Implementation commit: `cc3e010`. Required verification has passed; ready for human review and merge.
 Baseline: merged PR #37, main commit `746fbeb9580fed6719abd9d7014297151aaa55f8`.
 
 ## Implementation
@@ -23,6 +23,8 @@ Baseline: merged PR #37, main commit `746fbeb9580fed6719abd9d7014297151aaa55f8`.
 | Frontend `pnpm lint` | Passed |
 | Frontend `pnpm build` | Passed; `/` and `/app` generated |
 | Backend `pytest tests --ignore=tests/integration -q` | 619 passed; 1 existing Starlette deprecation warning |
+| PostgreSQL `pytest tests/integration -q` | 901 passed; no skips; 68 existing deprecation warnings |
+| Full backend `pytest tests -q` | 1520 passed; no skips; 68 existing deprecation warnings |
 | Backend `ruff check .` | Passed |
 | Browser | Passed in local headless Edge at 1440px, 390px and 320px; no page or console errors |
 | Diff self-review | API clients/backend/migrations unchanged; raw error matching, permission gates and pending locks preserved |
@@ -51,11 +53,13 @@ These images are actual browser captures with synthetic data, not design mockups
 - [Assistant and grouped sidebar](../screenshots/chinese-ui-refresh/assistant-desktop.png)
 - [Mobile drawer](../screenshots/chinese-ui-refresh/navigation-mobile.png)
 
-## Outstanding Verification
+## PostgreSQL Verification
 
-PostgreSQL integration verification is **blocked**, not passed or skipped. The dedicated target is `enterprise_ai_workbench_ui_20261004_test`, distinct from the runtime database. The full backend invocation (`pytest tests -q --maxfail=1`) stopped at the first integration fixture with a connection timeout to `127.0.0.1:5432` because Docker Desktop could not start its Linux engine after a stale runtime socket error. No integration fixture reached a database reset or migration. No backend completion claim is made.
+Docker was restored on 2026-10-04. PostgreSQL integration verification passed: **901 tests, no skips**, using `enterprise_ai_workbench_test`, distinct from the runtime database `enterprise_ai_workbench`. Existing fixtures validate isolation before resetting the test schema and applying existing migrations; no runtime database or live provider was used.
 
-Non-destructive service recovery was attempted; persistent Docker data, volumes and runtime databases were not deleted or reset. The user has been asked to restore Docker Desktop to Running. Once available, create the dedicated test database, run Feature 016/related PostgreSQL tests and the full backend suite, then update this record and mark the PR ready. The feature must not be reported complete until required regression passes and the human merges the PR.
+The earlier Docker connection failure is resolved. A first retry with the separately created `enterprise_ai_workbench_ui_20261004_test` database reached 540 passing tests but failed the evaluation fixtures' hard-coded database-name assertions (2 failures, 359 setup errors). Verification was then rerun against the repository-required test database without changing tests or safety checks. The integration run emitted 68 existing Starlette/Alembic deprecation warnings.
+
+The subsequent full backend run passed **1520 tests with no skips** and the same 68 deprecation warnings. Commands used workspace-local `--basetemp` directories. Required verification is complete; human merge is the remaining delivery gate.
 
 ## Review Notes and Limits
 
