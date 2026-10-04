@@ -1,6 +1,8 @@
 # Feature 017 — Verification and Screenshots
 
 Date: 2026-10-04 (Asia/Shanghai). Issue: [#39](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/39).
+Draft PR: [#41](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/41).
+Implementation commit: `cc3e010`. Branch has been pushed; PR remains draft until PostgreSQL regression passes.
 Baseline: merged PR #37, main commit `746fbeb9580fed6719abd9d7014297151aaa55f8`.
 
 ## Implementation
