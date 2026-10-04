@@ -1,6 +1,7 @@
 from app.models.agent import Agent
 from app.models.agent_tool import AgentTool
 from app.models.approval import Approval, MockITAccessRequest
+from app.models.bad_case import BadCase, BadCaseHistory
 from app.models.chunk import Chunk
 from app.models.document import Document
 from app.models.evaluation import EvaluationCase, EvaluationDataset
@@ -16,6 +17,8 @@ __all__ = [
     "Agent",
     "AgentTool",
     "Approval",
+    "BadCase",
+    "BadCaseHistory",
     "Chunk",
     "Document",
     "ExecutionLog",

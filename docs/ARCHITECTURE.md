@@ -291,3 +291,19 @@ identities. Current Membership and scoped references are checked again across
 execution phases. Only reviewed synthetic/redacted content may cross the
 explicitly acknowledged OpenAI egress boundary. No worker, framework, semantic
 judge, policy expansion or next-roadmap feature is implemented.
+
+## 13. Bad Case Management (Feature 018)
+
+Manual problem tracking references immutable terminal Evaluation Run Cases.
+The five new APIs reuse current Agent/System administrator membership checks,
+scoped source/history joins and composite foreign keys. They never call the
+evaluation runner or reconciliation, providers, adapters, Approvals or the
+execution-log recorder. Original Run snapshots, results and metrics remain unchanged.
+
+Additive migration `0013` stores `bad_cases` and append-only `bad_case_history`.
+Source uniqueness prevents duplicate issues; row locks and expected revisions
+prevent lost edits. Each actual human-field update and its history entry commit
+atomically. Confidential human text is synthetic/redacted only, with no DLP or
+purge guarantee. Closure is a human judgment; comparison and retest linking remain
+outside Feature 018. PR #43 awaits required verification and human merge;
+repository head does not imply a runtime database upgrade.

@@ -27,11 +27,16 @@ def test_migration_roundtrip_and_drift(postgres_engine, database_urls):
     assert database_urls[1].database == "enterprise_ai_workbench_test"
     config = Config(str(BACKEND / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["0012"]
+    assert script.get_heads() == ["0013"]
     assert script.get_revision("0011").down_revision == "0010"
     legacy = MetaData(naming_convention=Base.metadata.naming_convention)
     for table in Base.metadata.sorted_tables:
-        if table.name not in {"evaluation_runs", "evaluation_run_cases"}:
+        if table.name not in {
+            "evaluation_runs",
+            "evaluation_run_cases",
+            "bad_cases",
+            "bad_case_history",
+        }:
             table.to_metadata(legacy)
     with postgres_engine.connect() as connection:
         config.attributes["connection"] = connection

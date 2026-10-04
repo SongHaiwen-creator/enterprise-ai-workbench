@@ -4,6 +4,7 @@ from app.api.routes.agents import router as agents_router
 from app.api.routes.answers import router as answers_router
 from app.api.routes.approvals import router as approvals_router
 from app.api.routes.auth import router as auth_router
+from app.api.routes.bad_cases import router as bad_cases_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.evaluation import router as evaluation_router
 from app.api.routes.evaluation_runs import router as evaluation_runs_router
@@ -28,3 +29,4 @@ api_router.include_router(approvals_router)
 api_router.include_router(execution_logs_router)
 api_router.include_router(evaluation_router)
 api_router.include_router(evaluation_runs_router)
+api_router.include_router(bad_cases_router)
