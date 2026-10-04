@@ -305,5 +305,6 @@ Source uniqueness prevents duplicate issues; row locks and expected revisions
 prevent lost edits. Each actual human-field update and its history entry commit
 atomically. Confidential human text is synthetic/redacted only, with no DLP or
 purge guarantee. Closure is a human judgment; comparison and retest linking remain
-outside Feature 018. PR #43 awaits required verification and human merge;
-repository head does not imply a runtime database upgrade.
+outside Feature 018. PR #43 was human-merged on 2026-10-04. The separately
+user-authorized local runtime upgrade to `0013` was verified that day; repository
+head alone still does not imply any deployment's database revision.

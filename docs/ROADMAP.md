@@ -297,11 +297,13 @@ review. Delivery awaits human merge.
 
 Feature 018 H1-H4-approved Phase B implementation:
 `docs/features/018-bad-case-management.md`, Issue #42, branch
-`feat/bad-case-management`, PR #43 (pending human merge). Scope is manual issue tracking from
+`feat/bad-case-management`, PR #43 (human-merged on 2026-10-04; Issue #42 closed). Scope is manual issue tracking from
 terminal Evaluation Run Cases, separating behavioral FAIL, execution ERROR
 and human review, with classification, possible causes, handling state and
 atomic change history, with revision conflict protection and additive migration
-`0013`. Runtime migration remains unauthorized. Verification is recorded in
+`0013`. The user subsequently authorized the local runtime upgrade: `0012 -> 0013`
+was backed up and verified on 2026-10-04, with the existing 17 table structures and
+row counts unchanged. This does not imply any other deployment was upgraded. Verification is recorded in
 `docs/features/018-bad-case-management-verification.md`.
 Run/version comparison and retest linking are deferred to proposed
 Feature 023 in planning PR #40, which is not yet merged.
@@ -310,6 +312,18 @@ Feature 023 in planning PR #40, which is not yet merged.
 - Classify bad cases
 - Record possible causes
 - Compare versions
+
+### Supporting business evaluation baseline
+
+User-requested benchmark work after Feature 018: Issue #44,
+`docs/evaluation/business-baseline-spec.md`. An original synthetic employee-service
+corpus contains 12 policies and 108 cases, grouped into 74 development and 34
+holdout cases. It reuses existing APIs and does not implement Features 019–023.
+24 offline policy simulations passed. Live RAG/Agent measurement and runtime
+import await normal product login credentials; no business quality or ROI result
+is claimed. Business-owner gold review and real-task pilot measurements remain
+necessary. See `docs/evaluation/business-baseline-v1-report.md` and
+`docs/evaluation/employee-service-pilot.md`.
 
 ## Acceptance Criteria
 

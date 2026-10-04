@@ -1,0 +1,411 @@
+{
+  "answer_review": {
+    "development": {
+      "correct_over_reviewed": {
+        "count": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "fact_coverage_over_reviewed": {
+        "count": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "review_coverage": {
+        "count": 0,
+        "denominator": 32,
+        "value": 0.0
+      },
+      "reviewed": 0,
+      "unreviewed": 32
+    },
+    "holdout": {
+      "correct_over_reviewed": {
+        "count": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "fact_coverage_over_reviewed": {
+        "count": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "review_coverage": {
+        "count": 0,
+        "denominator": 16,
+        "value": 0.0
+      },
+      "reviewed": 0,
+      "unreviewed": 16
+    }
+  },
+  "answers": {
+    "development": {
+      "answerable_question_count": 32,
+      "answerable_unsupported_rate": {
+        "count": 0,
+        "denominator": 32,
+        "rate": 0.0
+      },
+      "citation_expected_document_precision": {
+        "count": 0,
+        "denominator": 0,
+        "rate": null
+      },
+      "expected_document_citation_coverage": {
+        "count": 0,
+        "denominator": 32,
+        "rate": 0.0
+      },
+      "failed_or_pending_answerable_question_count": 32,
+      "info_not_found_question_count": 4,
+      "info_not_found_unsupported_accuracy": {
+        "count": 0,
+        "denominator": 4,
+        "rate": 0.0
+      },
+      "measurement_status": "not_started",
+      "requests": {
+        "completed": 0,
+        "failed": 0,
+        "pending": 36,
+        "successful": 0,
+        "total": 36
+      },
+      "successful_answerable_question_count": 0,
+      "successful_info_not_found_question_count": 0
+    },
+    "holdout": {
+      "answerable_question_count": 16,
+      "answerable_unsupported_rate": {
+        "count": 0,
+        "denominator": 16,
+        "rate": 0.0
+      },
+      "citation_expected_document_precision": {
+        "count": 0,
+        "denominator": 0,
+        "rate": null
+      },
+      "expected_document_citation_coverage": {
+        "count": 0,
+        "denominator": 16,
+        "rate": 0.0
+      },
+      "failed_or_pending_answerable_question_count": 16,
+      "info_not_found_question_count": 4,
+      "info_not_found_unsupported_accuracy": {
+        "count": 0,
+        "denominator": 4,
+        "rate": 0.0
+      },
+      "measurement_status": "not_started",
+      "requests": {
+        "completed": 0,
+        "failed": 0,
+        "pending": 20,
+        "successful": 0,
+        "total": 20
+      },
+      "successful_answerable_question_count": 0,
+      "successful_info_not_found_question_count": 0
+    }
+  },
+  "claim_limit": "descriptive synthetic performance; no real-traffic accuracy or ROI",
+  "configuration": null,
+  "configuration_drift": false,
+  "failures": [],
+  "fingerprint": "cdfb0b2a9f1cb2d590d6d8354173b222e0aa3511d2d4e9109cb4c122e3ca9adc",
+  "gold_review": "agent-authored; business-owner review pending",
+  "groups": {
+    "development": {
+      "knowledge_qa": {
+        "counts": {
+          "pending": 32
+        },
+        "coverage": {
+          "count": 0,
+          "denominator": 32,
+          "value": 0.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 32,
+          "value": 0.0
+        },
+        "mode": "live_model",
+        "non_error_pass_rate": {
+          "count": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "passed_over_planned": {
+          "count": 0,
+          "denominator": 32,
+          "value": 0.0
+        },
+        "planned": 32
+      },
+      "permission_boundary": {
+        "counts": {
+          "passed": 18
+        },
+        "coverage": {
+          "count": 18,
+          "denominator": 18,
+          "value": 1.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 18,
+          "value": 0.0
+        },
+        "mode": "policy_simulation",
+        "non_error_pass_rate": {
+          "count": 18,
+          "denominator": 18,
+          "value": 1.0
+        },
+        "passed_over_planned": {
+          "count": 18,
+          "denominator": 18,
+          "value": 1.0
+        },
+        "planned": 18
+      },
+      "refusal_behavior": {
+        "counts": {
+          "pending": 8
+        },
+        "coverage": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "mode": "live_model",
+        "non_error_pass_rate": {
+          "count": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "passed_over_planned": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "planned": 8
+      },
+      "tool_calling": {
+        "counts": {
+          "pending": 16
+        },
+        "coverage": {
+          "count": 0,
+          "denominator": 16,
+          "value": 0.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 16,
+          "value": 0.0
+        },
+        "mode": "dry_run",
+        "non_error_pass_rate": {
+          "count": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "passed_over_planned": {
+          "count": 0,
+          "denominator": 16,
+          "value": 0.0
+        },
+        "planned": 16
+      }
+    },
+    "holdout": {
+      "knowledge_qa": {
+        "counts": {
+          "pending": 16
+        },
+        "coverage": {
+          "count": 0,
+          "denominator": 16,
+          "value": 0.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 16,
+          "value": 0.0
+        },
+        "mode": "live_model",
+        "non_error_pass_rate": {
+          "count": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "passed_over_planned": {
+          "count": 0,
+          "denominator": 16,
+          "value": 0.0
+        },
+        "planned": 16
+      },
+      "permission_boundary": {
+        "counts": {
+          "passed": 6
+        },
+        "coverage": {
+          "count": 6,
+          "denominator": 6,
+          "value": 1.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 6,
+          "value": 0.0
+        },
+        "mode": "policy_simulation",
+        "non_error_pass_rate": {
+          "count": 6,
+          "denominator": 6,
+          "value": 1.0
+        },
+        "passed_over_planned": {
+          "count": 6,
+          "denominator": 6,
+          "value": 1.0
+        },
+        "planned": 6
+      },
+      "refusal_behavior": {
+        "counts": {
+          "pending": 4
+        },
+        "coverage": {
+          "count": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "mode": "live_model",
+        "non_error_pass_rate": {
+          "count": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "passed_over_planned": {
+          "count": 0,
+          "denominator": 4,
+          "value": 0.0
+        },
+        "planned": 4
+      },
+      "tool_calling": {
+        "counts": {
+          "pending": 8
+        },
+        "coverage": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "mode": "dry_run",
+        "non_error_pass_rate": {
+          "count": 0,
+          "denominator": 0,
+          "value": null
+        },
+        "passed_over_planned": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "planned": 8
+      }
+    }
+  },
+  "observed_latency_ms": {
+    "count": 0,
+    "mean": null
+  },
+  "retrieval": {
+    "development": {
+      "answerable_question_count": 32,
+      "document_recall_at_5": {
+        "denominator": 32,
+        "macro_average": 0.0,
+        "sum": 0
+      },
+      "excluded_info_not_found_count": 4,
+      "failed_or_pending_answerable_question_count": 32,
+      "measurement_status": "not_started",
+      "requests": {
+        "completed": 0,
+        "failed": 0,
+        "pending": 36,
+        "successful": 0,
+        "total": 36
+      },
+      "retrieval_hit_at_3": {
+        "count": 0,
+        "denominator": 32,
+        "rate": 0.0
+      },
+      "retrieval_hit_at_5": {
+        "count": 0,
+        "denominator": 32,
+        "rate": 0.0
+      },
+      "successful_answerable_question_count": 0
+    },
+    "holdout": {
+      "answerable_question_count": 16,
+      "document_recall_at_5": {
+        "denominator": 16,
+        "macro_average": 0.0,
+        "sum": 0
+      },
+      "excluded_info_not_found_count": 4,
+      "failed_or_pending_answerable_question_count": 16,
+      "measurement_status": "not_started",
+      "requests": {
+        "completed": 0,
+        "failed": 0,
+        "pending": 20,
+        "successful": 0,
+        "total": 20
+      },
+      "retrieval_hit_at_3": {
+        "count": 0,
+        "denominator": 16,
+        "rate": 0.0
+      },
+      "retrieval_hit_at_5": {
+        "count": 0,
+        "denominator": 16,
+        "rate": 0.0
+      },
+      "successful_answerable_question_count": 0
+    }
+  },
+  "source": "original synthetic employee-service benchmark v1",
+  "target": {
+    "mode": "offline_policy_only",
+    "workspace_id": null
+  }
+}
