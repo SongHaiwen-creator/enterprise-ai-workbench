@@ -122,7 +122,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-describe("Approvals", () => {
+describe("审批中心", () => {
   beforeEach(() => {
     mockedList.mockReset();
     mockedGet.mockReset();
@@ -137,12 +137,12 @@ describe("Approvals", () => {
 
     const item = await screen.findByRole("button", { name: /Create IT access request/ });
     expect(mockedList).toHaveBeenCalledWith("workspace-1", "review", "test-token");
-    expect(within(item).getByText("Pending review")).toBeInTheDocument();
-    expect(within(item).getByText("Not executed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Review queue" })).toBeInTheDocument();
+    expect(within(item).getByText("待审核")).toBeInTheDocument();
+    expect(within(item).getByText("未执行")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "待我审核" })).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "My requests" }));
+    await user.click(screen.getByRole("button", { name: "我的申请" }));
     expect(mockedList).toHaveBeenLastCalledWith("workspace-1", "mine", "test-token");
   });
 
@@ -151,11 +151,11 @@ describe("Approvals", () => {
     await openFirst();
 
     expect(mockedList).toHaveBeenCalledWith("workspace-1", "mine", "test-token");
-    expect(screen.queryByRole("button", { name: "Review queue" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "待我审核" })).not.toBeInTheDocument();
     expect(await screen.findByText("Employee Service Assistant")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "拒绝" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /取消/ })).not.toBeInTheDocument();
   });
 
   it("hides decision controls on a reviewer's own request", async () => {
@@ -164,7 +164,7 @@ describe("Approvals", () => {
     await openFirst();
 
     expect(await screen.findByText("Employee Service Assistant")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument();
   });
 
   it("renders arguments as literal text", async () => {
@@ -175,8 +175,8 @@ describe("Approvals", () => {
       "<img src=x onerror=alert(1)> Investigate incidents.",
     )).toBeInTheDocument();
     expect(container.querySelector("img")).toBeNull();
-    expect(screen.getByText("production database")).toBeInTheDocument();
-    expect(screen.getByText("14 days")).toBeInTheDocument();
+    expect(screen.getByText("生产数据库")).toBeInTheDocument();
+    expect(screen.getByText("14 天")).toBeInTheDocument();
   });
 
   it("approves with a note, locks while pending, and re-reads server state", async () => {
@@ -184,34 +184,34 @@ describe("Approvals", () => {
     mockedDecide.mockReturnValue(pending.promise);
     const { props } = renderApprovals();
     const user = await openFirst();
-    await user.type(await screen.findByLabelText("Note (optional)"), "  Approved for INC-1042.  ");
-    await user.click(screen.getByRole("button", { name: "Approve" }));
+    await user.type(await screen.findByLabelText("审批意见（可选）"), "  Approved for INC-1042.  ");
+    await user.click(screen.getByRole("button", { name: "批准" }));
 
     expect(mockedDecide).toHaveBeenCalledWith(
       "workspace-1", "approval-1", "approve", "Approved for INC-1042.", "test-token",
     );
-    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "正在保存…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "拒绝" })).toBeDisabled();
     expect(props.onPendingChange).toHaveBeenLastCalledWith(true);
 
     mockedGet.mockResolvedValue(approvedSucceeded);
     mockedList.mockResolvedValue({ items: [approvedSucceeded], limit: 50, offset: 0 });
     pending.resolve(approvedSucceeded);
 
-    expect(await screen.findByText("Approval recorded")).toBeInTheDocument();
-    expect(await screen.findByText(/ITAR-3FA91C07B2D4 recorded/)).toBeInTheDocument();
+    expect(await screen.findByText("批准决定已保存")).toBeInTheDocument();
+    expect(await screen.findByText(/ITAR-3FA91C07B2D4 已记录/)).toBeInTheDocument();
     expect(screen.getByText("Approved for INC-1042.")).toBeInTheDocument();
     expect(props.onPendingChange).toHaveBeenLastCalledWith(false);
     expect(mockedGet).toHaveBeenCalledTimes(2);
     expect(mockedList).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "批准" })).not.toBeInTheDocument();
   });
 
   it("sends a reject decision without a note", async () => {
     mockedDecide.mockResolvedValue(approval({ decision_status: "rejected" }));
     renderApprovals();
     const user = await openFirst();
-    await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await user.click(await screen.findByRole("button", { name: "拒绝" }));
 
     expect(mockedDecide).toHaveBeenCalledWith(
       "workspace-1", "approval-1", "reject", null, "test-token",
@@ -222,40 +222,40 @@ describe("Approvals", () => {
     mockedGet.mockResolvedValue(approvedFailed);
     renderApprovals();
     await openFirst();
-    const detail = screen.getByRole("complementary", { name: "Approval" });
-    expect(await within(detail).findByText("Execution failed")).toBeInTheDocument();
-    expect(within(detail).getByText("Approved")).toBeInTheDocument();
-    expect(within(detail).getByText(/could not be executed \(adapter error\)/)).toBeInTheDocument();
+    const detail = screen.getByRole("complementary", { name: "审批详情" });
+    expect(await within(detail).findByText("执行失败")).toBeInTheDocument();
+    expect(within(detail).getByText("已批准")).toBeInTheDocument();
+    expect(within(detail).getByText(/执行服务返回错误/)).toBeInTheDocument();
 
     cleanup();
     mockedGet.mockResolvedValue(invalidated);
     renderApprovals();
     await openFirst();
-    const invalidatedDetail = screen.getByRole("complementary", { name: "Approval" });
-    expect(await within(invalidatedDetail).findByText("Invalidated")).toBeInTheDocument();
-    expect(within(invalidatedDetail).getByText("Not executed")).toBeInTheDocument();
-    expect(within(invalidatedDetail).getByText(/The Agent or Tool is no longer available/))
+    const invalidatedDetail = screen.getByRole("complementary", { name: "审批详情" });
+    expect(await within(invalidatedDetail).findByText("已失效")).toBeInTheDocument();
+    expect(within(invalidatedDetail).getByText("未执行")).toBeInTheDocument();
+    expect(within(invalidatedDetail).getByText(/智能体或工具已不可用/))
       .toBeInTheDocument();
-    expect(within(invalidatedDetail).getByText(/Invalidated by the system/)).toBeInTheDocument();
+    expect(within(invalidatedDetail).getByText(/已失效 · 系统处理/)).toBeInTheDocument();
   });
 
   it.each([
-    [403, "Approval access denied"],
-    [404, "Approval not found"],
-    [409, "Approval changed"],
-    [422, "Decision needs revision"],
-    [502, "Execution failed"],
-    [503, "Approval service unavailable"],
-    [0, "Connection unavailable"],
+    [403, "没有审批访问权限"],
+    [404, "审批申请不存在"],
+    [409, "审批状态已变化"],
+    [422, "请检查审批意见"],
+    [502, "执行失败"],
+    [503, "审批服务暂不可用"],
+    [0, "无法连接服务"],
   ])("handles a %s decision error and re-reads the Approval", async (status, title) => {
-    mockedDecide.mockRejectedValue(new ApiError("Server detail", status));
+    mockedDecide.mockRejectedValue(new ApiError("服务端安全提示", status));
     renderApprovals();
     const user = await openFirst();
-    await user.click(await screen.findByRole("button", { name: "Approve" }));
+    await user.click(await screen.findByRole("button", { name: "批准" }));
 
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByText(title)).toBeInTheDocument();
-    expect(within(alert).getByText("Server detail")).toBeInTheDocument();
+    expect(within(alert).getByText("服务端安全提示")).toBeInTheDocument();
     await waitFor(() => expect(mockedGet).toHaveBeenCalledTimes(2));
     expect(mockedList).toHaveBeenCalledTimes(2);
   });
@@ -264,7 +264,7 @@ describe("Approvals", () => {
     mockedDecide.mockRejectedValue(new ApiError("Could not validate credentials", 401));
     const { props } = renderApprovals();
     const user = await openFirst();
-    await user.click(await screen.findByRole("button", { name: "Approve" }));
+    await user.click(await screen.findByRole("button", { name: "批准" }));
 
     await waitFor(() => expect(props.onUnauthorized).toHaveBeenCalled());
     expect(mockedGet).toHaveBeenCalledTimes(1);
@@ -299,7 +299,7 @@ describe("Approvals", () => {
     mockedList.mockResolvedValue({ items: [], limit: 50, offset: 0 });
     rerender(<Approvals key="workspace-2" {...props} workspaceId="workspace-2" />);
 
-    expect(await screen.findByText("No approvals to show.")).toBeInTheDocument();
+    expect(await screen.findByText("暂无审批申请。")).toBeInTheDocument();
     expect(mockedList).toHaveBeenLastCalledWith("workspace-2", "review", "test-token");
     expect(screen.queryByText("Employee Service Assistant")).not.toBeInTheDocument();
   });

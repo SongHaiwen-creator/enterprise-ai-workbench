@@ -185,8 +185,8 @@ test("uses scoped Agent endpoints and omits absent knowledge context", async (co
 });
 
 test("formats API enum labels and initials for display", () => {
-  assert.equal(formatEnumLabel("system_admin"), "System Admin");
-  assert.equal(formatEnumLabel("invited"), "Invited");
+  assert.equal(formatEnumLabel("system_admin"), "系统管理员");
+  assert.equal(formatEnumLabel("invited"), "待加入");
   assert.equal(initials("Alice Zhang"), "AZ");
   assert.equal(initials(" "), "?");
 });

@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import Home from "@/app/page";
+import Home from "@/app/app/page";
 import {
   AgentSummary,
   AgentRouteResponse,
@@ -117,12 +117,13 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function signIn() {
+async function signIn(knowledgeArea = true) {
   const user = userEvent.setup();
   render(<Home />);
-  await user.type(screen.getByLabelText("Work email"), "alex@example.com");
-  await user.type(screen.getByLabelText("Password"), "correct-password");
-  await user.click(screen.getByRole("button", { name: "Sign in" }));
+  await user.type(screen.getByLabelText("工作邮箱"), "alex@example.com");
+  await user.type(screen.getByLabelText("密码"), "correct-password");
+  await user.click(screen.getByRole("button", { name: "登录" }));
+  if (knowledgeArea && screen.queryByRole("button", { name: "知识问答" })) await user.click(screen.getByRole("button", { name: "知识问答" }));
   return user;
 }
 
@@ -147,6 +148,16 @@ describe("Workspace selection", () => {
 
   afterEach(cleanup);
 
+  it("opens the Assistant by default after login", async () => {
+    mockedGetWorkspace.mockResolvedValue(workspace(workspaceItems[0]));
+    mockedListKnowledgeBases.mockResolvedValue([knowledgeBase("workspace-a", "kb-a", "Alpha policies")]);
+    mockedListAgents.mockResolvedValue([agent("workspace-a", "agent-a", "Alpha Assistant")]);
+    await signIn(false);
+    expect(await screen.findByRole("heading", { name: "智能助手", level: 1 })).toBeInTheDocument();
+    expect(await screen.findByLabelText("请求内容")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "智能助手" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("ignores stale Workspace responses that finish after the latest selection", async () => {
     const workspaceA = deferred<Workspace>();
     const workspaceB = deferred<Workspace>();
@@ -166,8 +177,8 @@ describe("Workspace selection", () => {
     );
 
     const user = await signIn();
-    const workspaceBButton = await screen.findByRole("button", { name: /Workspace B/i });
-    await user.click(workspaceBButton);
+    const workspaceSwitcher = await screen.findByRole("combobox", { name: "当前工作空间" });
+    await user.selectOptions(workspaceSwitcher, "workspace-b");
 
     await act(async () => {
       workspaceB.resolve(workspace(workspaceItems[1]));
@@ -194,7 +205,7 @@ describe("Workspace selection", () => {
       expect(screen.queryByRole("option", { name: "Alpha policies" })).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Assistant.*Route a request/i }));
+    await user.click(screen.getByRole("button", { name: "智能助手" }));
     expect(screen.getByRole("option", { name: "Beta Assistant" })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "Alpha Assistant" })).not.toBeInTheDocument();
   });
@@ -209,18 +220,18 @@ describe("Workspace selection", () => {
     mockedListExecutionLogs.mockResolvedValue({ items: [], limit: 50, offset: 0 });
 
     const user = await signIn();
-    const logsLink = await screen.findByRole("button", { name: /Execution Logs.*AI traceability/i });
+    const logsLink = await screen.findByRole("button", { name: "执行日志" });
     await user.click(logsLink);
-    expect(await screen.findByRole("heading", { name: "Execution logs" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "执行日志", level: 2 })).toBeInTheDocument();
     expect(mockedListExecutionLogs).toHaveBeenCalledWith("workspace-a", {}, 50, 0, "test-token");
 
-    await user.click(screen.getByRole("button", { name: /Workspace B/i }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "当前工作空间" }), "workspace-b");
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: /Execution Logs.*AI traceability/i }),
+        screen.queryByRole("button", { name: "执行日志" }),
       ).not.toBeInTheDocument();
     });
-    expect(screen.queryByRole("heading", { name: "Execution logs" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "执行日志", level: 2 })).not.toBeInTheDocument();
     expect(mockedListExecutionLogs).toHaveBeenCalledTimes(1);
   });
 
@@ -231,9 +242,9 @@ describe("Workspace selection", () => {
       mockedGetWorkspace.mockResolvedValue(workspace(selected));
       mockedListKnowledgeBases.mockResolvedValue([]);
       await signIn();
-      await screen.findByRole("button", { name: "Sign out" });
+      await screen.findByRole("button", { name: "退出登录" });
       await waitFor(() => expect(mockedGetWorkspace).toHaveBeenCalled());
-      const navigation = screen.queryByRole("button", { name: /Evaluation Datasets.*Reusable cases/i });
+      const navigation = screen.queryByRole("button", { name: "评测数据集" });
       if (role === "agent_admin" || role === "system_admin") expect(navigation).toBeInTheDocument();
       else expect(navigation).not.toBeInTheDocument();
     },
@@ -250,10 +261,10 @@ describe("Workspace selection", () => {
     const user = await signIn();
     expect(await screen.findByRole("option", { name: "Alpha policies" }))
       .toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Assistant.*Route a request/i }));
-    expect(await screen.findByText("We could not load active agents")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /Workspace.*Access & members/i }));
-    expect(screen.getByRole("region", { name: "Workspace overview" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "智能助手" }));
+    expect(await screen.findByText("无法加载可用智能体")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "空间与成员" }));
+    expect(screen.getByRole("region", { name: "工作空间概览" })).toBeInTheDocument();
   });
 
   it("clears Assistant state and context on Workspace switching", async () => {
@@ -282,16 +293,16 @@ describe("Workspace selection", () => {
     mockedRouteAgentRequest.mockResolvedValue(outcome);
 
     const user = await signIn();
-    await user.click(await screen.findByRole("button", { name: /Assistant.*Route a request/i }));
-    await user.type(screen.getByLabelText("Request"), outcome.request);
-    await user.click(screen.getByRole("button", { name: "Route request" }));
-    expect(await screen.findByText("No action was executed")).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "智能助手" }));
+    await user.type(screen.getByLabelText("请求内容"), outcome.request);
+    await user.click(screen.getByRole("button", { name: "发送请求" }));
+    expect(await screen.findByText("未执行任何操作")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /Workspace B/i }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "当前工作空间" }), "workspace-b");
     expect(await screen.findByRole("option", { name: "Beta Assistant" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Knowledge context (optional)")).toHaveValue("kb-b");
-    expect(screen.getByLabelText("Request")).toHaveValue("");
-    expect(screen.getByText("Your Assistant result will appear here")).toBeInTheDocument();
+    expect(screen.getByLabelText("知识库（可选）")).toHaveValue("kb-b");
+    expect(screen.getByLabelText("请求内容")).toHaveValue("");
+    expect(screen.getByText("处理结果将显示在这里")).toBeInTheDocument();
   });
 
   it("clears the session when Agent listing returns 401", async () => {
@@ -301,9 +312,9 @@ describe("Workspace selection", () => {
     mockedListAgents.mockRejectedValue(new ApiError("Could not validate credentials", 401));
 
     await signIn();
-    expect(await screen.findByText("Your session expired. Sign in again to continue."))
+    expect(await screen.findByText("登录已过期，请重新登录。"))
       .toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
   });
 
   it("renders an explicit access-denied state when Knowledge Base listing returns 403", async () => {
@@ -316,12 +327,12 @@ describe("Workspace selection", () => {
     await signIn();
 
     expect(
-      await screen.findByText("You cannot access Knowledge Q&A in this workspace"),
+      await screen.findByText("你没有当前空间的知识问答访问权限"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("You do not have access to knowledge bases in this workspace."),
+      screen.getByText("你没有访问当前空间知识库的权限。"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
   });
 
   it("clears the session when Knowledge Base listing returns 401", async () => {
@@ -334,9 +345,9 @@ describe("Workspace selection", () => {
     await signIn();
 
     expect(
-      await screen.findByText("Your session expired. Sign in again to continue."),
+      await screen.findByText("登录已过期，请重新登录。"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "退出登录" })).not.toBeInTheDocument();
   });
 });
