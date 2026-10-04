@@ -11,7 +11,7 @@ The database should support:
 - Role-based access control
 - Enterprise knowledge management
 - Agent and tool configuration
-- Human approval workflows
+- Human approval lifecycle
 - AI conversation and execution logging
 - AI evaluation and bad case management
 
@@ -35,7 +35,6 @@ Workspace
 ├── KnowledgeBase
 ├── Agent
 ├── Tool
-├── Workflow
 ├── Approval
 ├── Conversation
 ├── ExecutionLog
@@ -322,7 +321,9 @@ is effective for routing only when the Agent and Tool are both active.
 
 # 11. Workflow
 
-Represents a business workflow.
+Deferred beyond the current MVP by the 2026-10-04 scope decision. The following
+is a retained future design sketch, not an implemented or required MVP table.
+No workflow migration, node storage or run history is part of current delivery.
 
 Table: workflows
 
@@ -561,7 +562,6 @@ Examples:
 - chunks
 - agents
 - tools
-- workflows
 - approvals
 - conversations
 - execution_logs
@@ -597,7 +597,7 @@ To be decided during later feature design:
 
 - Fine-grained document permissions
 - Department-level knowledge access
-- Workflow node representation
+- Workflow node representation (post-MVP; deferred)
 - Conversation message structure
 - Prompt version management
 

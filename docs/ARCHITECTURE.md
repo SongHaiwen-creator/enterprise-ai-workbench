@@ -92,7 +92,6 @@ Responsibilities:
 - Documents
 - Agents
 - Tools
-- Workflows
 - Approvals
 - Conversations
 - Execution logs
@@ -100,6 +99,11 @@ Responsibilities:
 - Evaluation datasets
 
 Vector search will use pgvector.
+
+Workflow definition and orchestration are deferred beyond the current MVP
+by the 2026-10-04 scope decision. No workflow runner, worker or workflow
+persistence is planned for this delivery. Conversation and request tracking
+will reuse the existing Agent, registered Tool and Approval boundaries.
 
 ---
 
