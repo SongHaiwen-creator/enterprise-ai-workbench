@@ -44,12 +44,12 @@ it("maps an answer endpoint 409 to the disabled Knowledge Base state", async () 
     />,
   );
 
-  await user.type(screen.getByLabelText("Question"), "What is the travel limit?");
-  await user.click(screen.getByRole("button", { name: /ask knowledge/i }));
+  await user.type(screen.getByLabelText("问题"), "What is the travel limit?");
+  await user.click(screen.getByRole("button", { name: /提交问题/ }));
 
   expect(
-    await screen.findByText("Questions are disabled for this source"),
+    await screen.findByText("此知识库暂时无法接受提问"),
   ).toBeInTheDocument();
-  expect(screen.getByText(/disabled or unavailable/i)).toBeInTheDocument();
+  expect(screen.getByText(/已停用或暂不可用/)).toBeInTheDocument();
   expect(fetchMock).toHaveBeenCalledOnce();
 });

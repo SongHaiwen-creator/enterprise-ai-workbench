@@ -1,5 +1,7 @@
 "use client";
 
+import { displayMessage, formatEnumLabel } from "@/utils/presentation";
+
 import { FormEvent, useState } from "react";
 
 import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
@@ -95,11 +97,11 @@ export function Assistant({
 
     const normalizedRequest = request.trim();
     if (normalizedRequest.length === 0) {
-      setValidationMessage("Enter a request before asking the Assistant.");
+      setValidationMessage("请先输入请求内容。");
       return;
     }
     if (normalizedRequest.length > 2000) {
-      setValidationMessage("Keep your request to 2,000 characters or fewer.");
+      setValidationMessage("请求内容不能超过 2,000 字。");
       return;
     }
 
@@ -134,20 +136,20 @@ export function Assistant({
 
         if (error instanceof ApiError) {
           const title =
-            error.status === 403 ? "Assistant access denied" :
-            error.status === 404 ? "Agent or knowledge context not found" :
-            error.status === 409 ? "Agent or knowledge context unavailable" :
-            error.status === 422 ? "Request needs revision" :
-            error.status === 502 || error.status === 503 ? "Assistant service unavailable" :
-            error.status === 0 ? "Connection unavailable" :
-            "Assistant request failed";
-          setResult({ kind: "error", title, message: error.message });
+            error.status === 403 ? "没有智能助手访问权限" :
+            error.status === 404 ? "智能体或知识库不存在" :
+            error.status === 409 ? "智能体或知识库暂不可用" :
+            error.status === 422 ? "请检查请求内容" :
+            error.status === 502 || error.status === 503 ? "智能助手服务暂不可用" :
+            error.status === 0 ? "无法连接服务" :
+            "请求处理失败";
+          setResult({ kind: "error", title, message: displayMessage(error.message, error.status) });
           return;
         }
         setResult({
           kind: "error",
-          title: "Assistant request failed",
-          message: "We could not process this request. Try again in a moment.",
+          title: "请求处理失败",
+          message: "暂时无法处理此请求，请稍后重试。",
         });
       })
       .finally(() => onPendingChange(false));
@@ -158,8 +160,8 @@ export function Assistant({
       <section className="qa-loading-shell" aria-live="polite">
         <span className="spinner" aria-hidden="true" />
         <div>
-          <strong>Loading active agents</strong>
-          <p>Preparing the available Assistants for {workspaceName}.</p>
+          <strong>正在加载智能体</strong>
+          <p>正在加载 {workspaceName} 中可用的智能助手。</p>
         </div>
       </section>
     );
@@ -170,11 +172,11 @@ export function Assistant({
       <section className="qa-state-card error-state" role="alert">
         <span className="state-icon" aria-hidden="true">!</span>
         <div>
-          <p className="section-kicker">Assistant unavailable</p>
-          <h2>{agentsError.kind === "forbidden" ? "Assistant access denied" : "We could not load active agents"}</h2>
+          <p className="section-kicker">智能助手暂不可用</p>
+          <h2>{agentsError.kind === "forbidden" ? "没有智能助手访问权限" : "无法加载可用智能体"}</h2>
           <p>{agentsError.message}</p>
           <button className="assistant-retry-button" type="button" onClick={onRetryAgents}>
-            Try again
+            重试
           </button>
         </div>
       </section>
@@ -186,11 +188,11 @@ export function Assistant({
       <section className="qa-state-card" aria-labelledby="no-agents-title">
         <span className="state-icon" aria-hidden="true">◇</span>
         <div>
-          <p className="section-kicker">Assistant</p>
-          <h2 id="no-agents-title">No active agents are available</h2>
-          <p>Ask an Agent administrator to activate an Agent in this workspace.</p>
+          <p className="section-kicker">智能助手</p>
+          <h2 id="no-agents-title">暂无已启用的智能体</h2>
+          <p>请联系 AI 管理员启用当前空间的智能体。</p>
           <button className="assistant-retry-button" type="button" onClick={onRetryAgents}>
-            Refresh agents
+            刷新智能体
           </button>
         </div>
       </section>
@@ -203,20 +205,17 @@ export function Assistant({
         <section className="qa-context-card" aria-labelledby="assistant-title">
           <div className="qa-heading-row">
             <div>
-              <p className="section-kicker">Assistant</p>
-              <h2 id="assistant-title">Route an enterprise request</h2>
-              <p className="muted">
-                Ask one request. The Agent will identify whether it needs knowledge,
-                an enterprise tool, or is outside its scope.
-              </p>
+              <p className="section-kicker">智能助手</p>
+              <h2 id="assistant-title">你想了解什么？</h2>
+              <p className="muted">提出一个需求，智能体会判断它需要查询知识、调用企业工具，还是超出了当前能力范围。</p>
             </div>
-            <span className="grounded-badge">Single request</span>
+            <span className="grounded-badge">单次请求</span>
           </div>
 
           <form className="assistant-form" onSubmit={handleSubmit}>
             <div className="assistant-context-grid">
               <div>
-                <label htmlFor="assistant-agent">Agent</label>
+                <label htmlFor="assistant-agent">智能体</label>
                 <select
                   id="assistant-agent"
                   value={selectedAgent.id}
@@ -235,7 +234,7 @@ export function Assistant({
                 )}
               </div>
               <div>
-                <label htmlFor="assistant-knowledge-base">Knowledge context (optional)</label>
+                <label htmlFor="assistant-knowledge-base">知识库（可选）</label>
                 <select
                   id="assistant-knowledge-base"
                   value={selectedKnowledgeBase?.id ?? ""}
@@ -245,7 +244,7 @@ export function Assistant({
                   }}
                   disabled={isPending}
                 >
-                  <option value="">No knowledge context</option>
+                  <option value="">不选择知识库</option>
                   {activeKnowledgeBases.map((base) => (
                     <option key={base.id} value={base.id}>{base.name}</option>
                   ))}
@@ -256,15 +255,19 @@ export function Assistant({
             {(knowledgeBasesError || activeKnowledgeBases.length === 0 || !selectedKnowledgeBase) && (
               <p className="assistant-context-guidance" role="status">
                 {knowledgeBasesError
-                  ? "Knowledge contexts could not be loaded. Requests for tools or outside this Agent's scope can still be routed."
+                  ? "知识库加载失败。你仍可提交业务查询请求。"
                   : activeKnowledgeBases.length === 0
-                    ? "No active knowledge base is available. Requests for tools or outside this Agent's scope can still be routed."
-                    : "No knowledge context selected. Knowledge questions will need an active knowledge base."}
+                    ? "暂无已启用的知识库。你仍可提交业务查询请求。"
+                    : "知识类问题需要选择已启用的知识库。"}
               </p>
             )}
 
+            <div className="example-prompts" aria-label="示例提问">
+              {["差旅报销需要哪些材料？", "查询我的报销状态", "申请 IT 系统访问权限"].map(prompt => <button type="button" key={prompt} disabled={isPending} onClick={() => { setRequest(prompt); setValidationMessage(null); document.getElementById("assistant-request")?.focus(); }}>{prompt}</button>)}
+            </div>
+
             <div className="question-form">
-              <label htmlFor="assistant-request">Request</label>
+              <label htmlFor="assistant-request">请求内容</label>
               <textarea
                 id="assistant-request"
                 value={request}
@@ -272,7 +275,7 @@ export function Assistant({
                   setRequest(event.target.value);
                   if (validationMessage) setValidationMessage(null);
                 }}
-                placeholder="Ask about a policy, business status, or enterprise service…"
+                placeholder="例如：出差报销需要哪些材料？或查询我的报销状态。"
                 rows={5}
                 maxLength={2001}
                 disabled={isPending}
@@ -280,10 +283,10 @@ export function Assistant({
               />
               <div className="composer-footer">
                 <span id="assistant-request-guidance">
-                  {request.length.toLocaleString()} / 2,000 characters
+                  {request.length.toLocaleString()} / 2,000 字
                 </span>
                 <button className="primary-button ask-button" type="submit" disabled={isPending}>
-                  {isPending ? "Routing request…" : "Route request"}
+                  {isPending ? "正在处理…" : "发送请求"}
                 </button>
               </div>
               {validationMessage && (
@@ -299,8 +302,8 @@ export function Assistant({
           {result.kind === "initial" && (
             <div className="answer-empty">
               <span aria-hidden="true">✦</span>
-              <h2>Your Assistant result will appear here</h2>
-              <p>Each request receives one routed result. Knowledge answers show their sources.</p>
+              <h2>处理结果将显示在这里</h2>
+              <p>提交请求后查看结果；知识类回答会附上引用来源。</p>
             </div>
           )}
 
@@ -308,8 +311,8 @@ export function Assistant({
             <div className="answer-loading" role="status">
               <div className="thinking-mark" aria-hidden="true"><span /><span /><span /></div>
               <div>
-                <p className="section-kicker">Routing request</p>
-                <h2>Reviewing your request</h2>
+                <p className="section-kicker">正在处理请求</p>
+                <h2>正在分析你的请求</h2>
                 <p className="submitted-question">“{result.request}”</p>
               </div>
             </div>
@@ -319,8 +322,8 @@ export function Assistant({
             (result.response.outcome.status === "answered" ? (
               <article className="answer-content">
                 <div className="answer-meta">
-                  <span className="answer-status"><span aria-hidden="true">✓</span> Knowledge answer</span>
-                  <span>{result.response.outcome.citations.length} source{result.response.outcome.citations.length === 1 ? "" : "s"}</span>
+                  <span className="answer-status"><span aria-hidden="true">✓</span> 知识回答</span>
+                  <span>{result.response.outcome.citations.length} 个来源</span>
                 </div>
                 <p className="answer-question">{result.response.request}</p>
                 <div className="answer-copy">{result.response.outcome.answer}</div>
@@ -328,93 +331,93 @@ export function Assistant({
             ) : (
               <div className="answer-state unsupported-state" role="status">
                 <span className="state-icon" aria-hidden="true">?</span>
-                <p className="section-kicker">Knowledge question · insufficient evidence</p>
-                <h2>The selected knowledge base cannot support an answer</h2>
-                <p>{result.response.outcome.message}</p>
+                <p className="section-kicker">知识问答 · 资料不足</p>
+                <h2>当前知识库没有足够资料支持回答</h2>
+                <p>{displayMessage(result.response.outcome.message ?? "检索到的资料不足以支持回答此问题。")}</p>
               </div>
             ))}
 
           {toolOutcome?.status === "not_executed" && (
             <div className="answer-state assistant-tool-state" role="status">
               <span className="state-icon" aria-hidden="true">↗</span>
-              <p className="section-kicker">Enterprise tool required</p>
-              <h2>No action was executed</h2>
-              <p>{toolOutcome.message}</p>
+              <p className="section-kicker">企业工具请求</p>
+              <h2>未执行任何操作</h2>
+              <p>{displayMessage(toolOutcome.message)}</p>
             </div>
           )}
 
           {toolOutcome?.status === "executed" && (
             <article className="answer-content assistant-tool-result" role="status">
               <div className="answer-meta">
-                <span className="answer-status"><span aria-hidden="true">✓</span> Executed</span>
-                <span>Read-only enterprise result</span>
+                <span className="answer-status"><span aria-hidden="true">✓</span> 已执行</span>
+                <span>只读查询结果 · 模拟服务</span>
               </div>
               <p className="section-kicker">{toolOutcome.tool.name}</p>
-              <h2>Capability completed successfully</h2>
+              <h2>业务查询已完成</h2>
               {toolOutcome.result.type === "reimbursement_status" ? (
                 <dl className="tool-result-grid">
-                  <div><dt>Reference</dt><dd>{toolOutcome.result.reimbursement_reference}</dd></div>
-                  <div><dt>Status</dt><dd>{toolOutcome.result.status.replaceAll("_", " ")}</dd></div>
-                  <div><dt>Amount</dt><dd>{(toolOutcome.result.amount_minor / 100).toFixed(2)} {toolOutcome.result.currency}</dd></div>
-                  <div><dt>Submitted</dt><dd>{toolOutcome.result.submitted_on}</dd></div>
-                  <div><dt>Last updated</dt><dd>{toolOutcome.result.last_updated_on}</dd></div>
+                  <div><dt>申请编号</dt><dd>{toolOutcome.result.reimbursement_reference}</dd></div>
+                  <div><dt>状态</dt><dd>{formatEnumLabel(toolOutcome.result.status)}</dd></div>
+                  <div><dt>金额</dt><dd>{(toolOutcome.result.amount_minor / 100).toFixed(2)} {toolOutcome.result.currency}</dd></div>
+                  <div><dt>提交时间</dt><dd>{toolOutcome.result.submitted_on}</dd></div>
+                  <div><dt>更新时间</dt><dd>{toolOutcome.result.last_updated_on}</dd></div>
                 </dl>
               ) : (
                 <dl className="tool-result-grid">
-                  <div><dt>Name</dt><dd>{toolOutcome.result.name}</dd></div>
-                  <div><dt>Email</dt><dd>{toolOutcome.result.email}</dd></div>
-                  <div><dt>Department</dt><dd>{toolOutcome.result.department}</dd></div>
-                  <div><dt>Job title</dt><dd>{toolOutcome.result.job_title}</dd></div>
-                  <div><dt>Employment status</dt><dd>{toolOutcome.result.employment_status}</dd></div>
+                  <div><dt>姓名</dt><dd>{toolOutcome.result.name}</dd></div>
+                  <div><dt>邮箱</dt><dd>{toolOutcome.result.email}</dd></div>
+                  <div><dt>部门</dt><dd>{toolOutcome.result.department}</dd></div>
+                  <div><dt>职位</dt><dd>{toolOutcome.result.job_title}</dd></div>
+                  <div><dt>在职状态</dt><dd>{formatEnumLabel(toolOutcome.result.employment_status)}</dd></div>
                 </dl>
               )}
-              <p className="tool-result-message">{toolOutcome.message}</p>
+              <p className="tool-result-message">{displayMessage(toolOutcome.message)}</p>
             </article>
           )}
 
           {toolOutcome?.status === "approval_required" && (
             <article className="answer-content assistant-approval-result" role="status">
               <div className="answer-meta">
-                <span className="approval-status">Approval required — not executed</span>
-                <span>Sensitive enterprise action</span>
+                <span className="approval-status">等待人工审批 · 尚未执行</span>
+                <span>敏感操作 · 模拟服务</span>
               </div>
               <p className="section-kicker">{toolOutcome.tool.name}</p>
-              <h2>This request needs human approval</h2>
+              <h2>此请求需要人工审批</h2>
               <dl className="tool-result-grid">
-                <div><dt>System</dt><dd>{toolOutcome.validated_arguments.system.replaceAll("_", " ")}</dd></div>
-                <div><dt>Access level</dt><dd>{toolOutcome.validated_arguments.access_level.replaceAll("_", " ")}</dd></div>
-                <div><dt>Duration</dt><dd>{toolOutcome.validated_arguments.duration_days} days</dd></div>
-                <div className="tool-result-wide"><dt>Business justification</dt><dd>{toolOutcome.validated_arguments.business_justification}</dd></div>
+                <div><dt>目标系统</dt><dd>{formatEnumLabel(toolOutcome.validated_arguments.system)}</dd></div>
+                <div><dt>访问级别</dt><dd>{formatEnumLabel(toolOutcome.validated_arguments.access_level)}</dd></div>
+                <div><dt>有效期限</dt><dd>{toolOutcome.validated_arguments.duration_days} 天</dd></div>
+                <div className="tool-result-wide"><dt>申请理由</dt><dd>{toolOutcome.validated_arguments.business_justification}</dd></div>
               </dl>
               <p className="approval-reference">
-                Approval ID {toolOutcome.approval.id} · Decision {toolOutcome.approval.decision_status.replaceAll("_", " ")} · Execution {toolOutcome.approval.execution_status.replaceAll("_", " ")}
+                审批编号 {toolOutcome.approval.id} · 审批决定 {formatEnumLabel(toolOutcome.approval.decision_status)} · 执行状态 {formatEnumLabel(toolOutcome.approval.execution_status)}
               </p>
-              <p className="tool-result-message">{toolOutcome.message}</p>
+              <p className="tool-result-message">{displayMessage(toolOutcome.message)}</p>
             </article>
           )}
 
           {result.kind === "routed" && result.response.intent === "unsupported" && (
             <div className="answer-state unsupported-state" role="status">
               <span className="state-icon" aria-hidden="true">?</span>
-              <p className="section-kicker">Outside Agent scope</p>
-              <h2>This Agent cannot handle that request</h2>
-              <p>{result.response.outcome.message}</p>
+              <p className="section-kicker">超出智能体能力范围</p>
+              <h2>当前智能体无法处理此请求</h2>
+              <p>{displayMessage(result.response.outcome.message ?? "检索到的资料不足以支持回答此问题。")}</p>
             </div>
           )}
 
           {result.kind === "context_required" && (
             <div className="answer-state assistant-context-required" role="alert">
               <span className="state-icon" aria-hidden="true">⌑</span>
-              <p className="section-kicker">Knowledge context required</p>
-              <h2>Select a knowledge base for this question</h2>
-              <p>{KNOWLEDGE_CONTEXT_REQUIRED}</p>
+              <p className="section-kicker">需要知识库</p>
+              <h2>请为此问题选择知识库</h2>
+              <p>{displayMessage(KNOWLEDGE_CONTEXT_REQUIRED)}</p>
             </div>
           )}
 
           {result.kind === "error" && (
             <div className="answer-state error-state" role="alert">
               <span className="state-icon" aria-hidden="true">!</span>
-              <p className="section-kicker">Request failed</p>
+              <p className="section-kicker">请求失败</p>
               <h2>{result.title}</h2>
               <p>{result.message}</p>
             </div>
@@ -425,8 +428,8 @@ export function Assistant({
       <aside className="sources-panel" aria-labelledby="assistant-sources-title">
         <div className="sources-heading">
           <div>
-            <p className="section-kicker">Evidence</p>
-            <h2 id="assistant-sources-title">Citations</h2>
+            <p className="section-kicker">引用资料</p>
+            <h2 id="assistant-sources-title">引用来源</h2>
           </div>
           {answeredOutcome && <span>{answeredOutcome.citations.length}</span>}
         </div>
@@ -434,11 +437,11 @@ export function Assistant({
         {!answeredOutcome ? (
           <div className="sources-empty">
             <span aria-hidden="true">⌑</span>
-            <p>Citations appear only when a knowledge question has a grounded answer.</p>
+            <p>知识类问题得到有依据的回答后，引用来源会显示在这里。</p>
           </div>
         ) : (
           <>
-            <div className="citation-list" aria-label="Answer citations">
+            <div className="citation-list" aria-label="回答引用">
               {answeredOutcome.citations.map((citation, index) => (
                 <button
                   key={`${citation.chunk_id}-${index}`}
@@ -450,7 +453,7 @@ export function Assistant({
                   <span className="citation-number">{index + 1}</span>
                   <span className="citation-summary">
                     <strong>{citation.file_name}</strong>
-                    <small>Chunk {citation.chunk_index + 1} · Version {citation.document_version}</small>
+                    <small>片段 {citation.chunk_index + 1} · 版本 {citation.document_version}</small>
                     <span>{citation.excerpt}</span>
                   </span>
                 </button>
@@ -458,13 +461,13 @@ export function Assistant({
             </div>
             {selectedCitation && (
               <section className="source-inspector" aria-label={selectedCitation.file_name}>
-                <p className="section-kicker">Selected source</p>
+                <p className="section-kicker">原文摘录</p>
                 <h3>{selectedCitation.file_name}</h3>
                 <p className="source-location">
-                  Chunk {selectedCitation.chunk_index + 1} · Document version {selectedCitation.document_version}
+                  片段 {selectedCitation.chunk_index + 1} · 文档版本 {selectedCitation.document_version}
                 </p>
                 <blockquote>{selectedCitation.excerpt}</blockquote>
-                <p className="verified-note"><span aria-hidden="true">✓</span> Verified excerpt from the retrieved source</p>
+                <p className="verified-note"><span aria-hidden="true">✓</span> 以下摘录来自检索到的原始资料</p>
               </section>
             )}
           </>
