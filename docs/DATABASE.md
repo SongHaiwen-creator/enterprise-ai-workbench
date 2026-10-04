@@ -639,3 +639,29 @@ fields and omit credentials/secrets. Corpus manifests retain IDs/content hashes,
 not the corpus itself. Current Agent/System administrator authority controls all
 Run APIs. Full contracts, constraints and retention boundaries are in
 `docs/features/016-evaluation-run-metrics.md`.
+
+# 20. Bad Case and Change History (Feature 018)
+
+Additive revision `0013` follows `0012`, creating exactly `bad_cases` and
+`bad_case_history`; previous migrations/tables are unchanged. Upgrade/downgrade
+verification is restricted to the dedicated test database, not the runtime database.
+
+`bad_cases` references one same-Workspace terminal `evaluation_run_cases` row;
+`UNIQUE(workspace_id,source_run_case_id)` persists even after closure. Source
+kind is server-derived (`behavior_failure`, `execution_error`, `manual_review`);
+original evaluation history is never copied or edited. Human fields are bounded
+title/description/category, nullable possible cause/handling/resolution notes,
+open/investigating/resolved/dismissed status, revision, creator/updater Membership
+references and timestamps. A CHECK requires a resolution note exactly for terminal
+handling states. Current Workspace/role and source eligibility checks remain in services.
+
+`bad_case_history` retains actor, timestamp, unique per-problem revision, created/
+updated event, optional change reason and allow-listed human-field before/after
+JSONB. Changes and history commit atomically; no history editing/deletion API exists.
+All foreign keys use `ON DELETE RESTRICT`, and composite keys enforce source,
+problem and actor tenant consistency. This is application immutability, not a claim
+of DBA-proof storage. Text and retained old values remain Workspace-confidential;
+no provider egress, automated DLP, retention or purge is implemented.
+
+Exact contracts, constraints, tests and approval boundaries are defined in
+`docs/features/018-bad-case-management.md`. Runtime/production migration is not authorized.

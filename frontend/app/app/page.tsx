@@ -10,6 +10,7 @@ import { ExecutionLogs } from "@/app/components/execution-logs";
 import { PlatformNavigation, type ProductArea } from "@/app/components/platform-navigation";
 import { Icon } from "@/app/components/ui-icon";
 import { EvaluationDatasets } from "@/app/components/evaluation-datasets";
+import { BadCases } from "@/app/components/bad-cases";
 import type { AgentsLoadFailure } from "@/app/components/assistant";
 import { KnowledgeQA } from "@/app/components/knowledge-qa";
 import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
@@ -82,7 +83,7 @@ export default function Workbench() {
   const canViewExecutionLogs =
     selectedWorkspace?.role === "system_admin" || selectedWorkspace?.role === "agent_admin";
   const productArea: ProductArea =
-    (requestedProductArea === "execution-logs" || requestedProductArea === "evaluation-datasets") && !canViewExecutionLogs
+    (requestedProductArea === "execution-logs" || requestedProductArea === "evaluation-datasets" || requestedProductArea === "bad-cases") && !canViewExecutionLogs
       ? "workspace"
       : requestedProductArea;
 
@@ -386,9 +387,9 @@ export default function Workbench() {
         <header className="topbar">
           <div>
             <p className="section-kicker">
-              {productArea === "assistant" ? "日常使用 / 智能助手" : productArea === "knowledge-qa" ? "日常使用 / 知识问答" : productArea === "approvals" ? "日常使用 / 审批中心" : productArea === "execution-logs" ? "运营管理 / 执行日志" : productArea === "evaluation-datasets" ? "运营管理 / 评测数据集" : "工作空间 / 空间与成员"}
+              {productArea === "assistant" ? "日常使用 / 智能助手" : productArea === "knowledge-qa" ? "日常使用 / 知识问答" : productArea === "approvals" ? "日常使用 / 审批中心" : productArea === "execution-logs" ? "运营管理 / 执行日志" : productArea === "evaluation-datasets" ? "运营管理 / 评测数据集" : productArea === "bad-cases" ? "运营管理 / 问题案例" : "工作空间 / 空间与成员"}
             </p>
-            <h1>{productArea === "assistant" ? "智能助手" : productArea === "knowledge-qa" ? "知识问答" : productArea === "approvals" ? "审批中心" : productArea === "execution-logs" ? "执行日志" : productArea === "evaluation-datasets" ? "评测数据集" : selectedWorkspace?.name ?? "工作空间"}</h1>
+            <h1>{productArea === "assistant" ? "智能助手" : productArea === "knowledge-qa" ? "知识问答" : productArea === "approvals" ? "审批中心" : productArea === "execution-logs" ? "执行日志" : productArea === "evaluation-datasets" ? "评测数据集" : productArea === "bad-cases" ? "问题案例" : selectedWorkspace?.name ?? "工作空间"}</h1>
             {productArea !== "workspace" && selectedWorkspace && (
               <p className="topbar-context">{selectedWorkspace.name}</p>
             )}
@@ -471,6 +472,8 @@ export default function Workbench() {
               accessToken={accessToken}
               onUnauthorized={() => clearSession("登录已过期，请重新登录。")}
             />
+          ) : workspace && selectedWorkspace && productArea === "bad-cases" ? (
+            <BadCases workspaceId={workspace.id} accessToken={accessToken} onUnauthorized={() => clearSession("登录已过期，请重新登录。")} />
           ) : workspace && selectedWorkspace && productArea === "execution-logs" ? (
             <ExecutionLogs
               key={workspace.id}

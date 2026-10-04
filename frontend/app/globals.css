@@ -290,3 +290,16 @@ fieldset { min-width: 0; }
 }
 @media (max-width: 620px) { .overview-grid { grid-template-columns: 1fr; } .primary-overview { grid-column: auto; } .add-member-form { flex-direction: column; align-items: stretch; } .field-group { min-width: 0; } .qa-heading-row,.composer-footer { flex-direction: column; align-items: stretch; } .grounded-badge { align-self: flex-start; } .assistant-context-grid,.tool-result-grid { grid-template-columns: 1fr; } .ask-button { width: 100%; } .execution-log-filters label,.execution-log-filters select { width: 100%; } .evaluation-runs dl { grid-template-columns: 1fr; } .content { padding: 16px; } .qa-context-card { padding: 20px; } .members-section { padding: 20px; } }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+
+.bad-cases { min-width: 0; }
+.bad-cases p, .bad-cases td, .bad-cases li { overflow-wrap: anywhere; }
+.bad-cases pre, [aria-label="登记评测问题"] pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; background: var(--soft); padding: 16px; border-radius: 10px; }
+.bad-cases fieldset, [aria-label="登记评测问题"] fieldset { min-width: 0; display: grid; gap: 16px; border: 1px solid var(--line); padding: 20px; border-radius: 12px; }
+.bad-cases label, [aria-label="登记评测问题"] label { display: grid; gap: 8px; }
+.bad-cases input, .bad-cases textarea, [aria-label="登记评测问题"] input, [aria-label="登记评测问题"] textarea { width: 100%; box-sizing: border-box; }
+.bad-cases article { margin: 24px 0; }
+.bad-cases .evaluation-results table { min-width: 720px; }
+.bad-cases > fieldset { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bad-cases > fieldset > button { grid-column: 1 / -1; justify-self: start; }
+.bad-cases button:not(.primary-button), [aria-label="登记评测问题"] button:not(.primary-button) { min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--primary); }
+@media (max-width: 700px) { .bad-cases > fieldset { grid-template-columns: 1fr; } }

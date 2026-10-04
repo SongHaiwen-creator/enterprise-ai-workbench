@@ -1,12 +1,12 @@
 # Feature 018 - Bad Case Management
 
-状态：Phase A 规格提案，待人工审批；未实施。
+状态：Phase B 已获批准并实施；验证记录见第 14 节，交付待人工合并。
 日期：2026-10-04。
 基线：最新 `origin/main` / HEAD `78ec01394b49d0f8b0ae508472500154d8e646db`。
 分支：`feat/bad-case-management`。
 风险：高；新增迁移、Workspace 隔离和保密人工记录。
 Issue：[#42](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/42)。
-PR：本分支的 Phase A 文档 PR；创建后的链接由交付说明提供。
+PR：[#43](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/43)，由规格 PR 更新为实施 PR。
 
 ## 1. Goal 与阶段边界
 
@@ -14,9 +14,11 @@ PR：本分支的 Phase A 文档 PR；创建后的链接由交付说明提供。
 记录人工分类、可能原因、处理过程和结论，同时保留不可变的原始评测证据。
 问题管理不改变评测评分，不代表系统已证明根因或修复有效。
 
-本轮只交付规格、Issue、文档提交和 Phase A PR。不创建迁移、应用代码或测试，
+原 Phase A 只交付规格、Issue、文档提交和 Phase A PR。不创建迁移、应用代码或测试，
 不修改数据库，不调用 Provider，不开始 Feature 019 或其他功能。
 Phase B 须按第 12 节审批后才可实施；规格 PR 合并也不等于实施批准。
+用户随后在本聊天以“实施”批准提案 `c4f85bc` 的 H1–H4，并以“继续”确认继续执行；
+该批准只授权本规格实施及专用测试数据库验证，不授权运行迁移或合并。
 
 ## 2. 规划来源与基线
 
@@ -245,7 +247,7 @@ Phase B 先专项后回归：
 - 完整 backend pytest（含 PostgreSQL，无必需 skips）、Ruff；完整 frontend tests、
   `pnpm lint`、`pnpm build`；浏览器 QA；`git diff --check`；自审及独立安全/迁移复审。
 
-本轮 Phase A 只核验 GitHub 基线、文档与现有契约一致性、链接、冲突标记、whitespace 和
+原 Phase A 只核验 GitHub 基线、文档与现有契约一致性、链接、冲突标记、whitespace 和
 scope diff。应用测试/数据库迁移未运行；历史 Feature 测试数量不作为本轮证据。
 
 ## 12. 实施前审批项与风险
@@ -273,5 +275,23 @@ Feature 023 的 Run/Agent 版本比较与复测关联、Feature 022 配置版本
 运行重试/调度、真实工具、Workflow、通知/指派/SLA、附件、全文搜索、导入导出、
 保留期/purge、新框架、部署、运行数据库迁移与自动合并，均不属于 018。
 
-本轮规格 PR 仅关联实现 Issue，不用 `Closes` 提前关闭它；Phase B 经验证的实现 PR
-才使用 `Closes #<issue>`。本轮停止在规格可审阅，批准后仍只实施 018。
+原规格 PR 仅关联实现 Issue，不用 `Closes` 提前关闭它；Phase B 经验证的实现 PR
+使用 `Closes #42`。实施范围仍仅限 018，不自动合并或开始后续功能。
+
+## 14. Phase B 实施记录（2026-10-04）
+
+批准对应 proposal commit `c4f85bc03659cf4df9371672d822b268d57fddd7`、H1–H4。
+实施前重新 fetch，main 仍为 `78ec013`；规划 PR #40 仍未合并，范围未变化。
+新增 additive migration `0013` 仅创建 `bad_cases` 与 `bad_case_history`；五个 API、
+中文运营入口和评测详情登记入口按上述契约实施，无新依赖。
+
+source history 严格复用 `RunCaseDetail` 序列化，不调用带 reconciliation 的读取服务。
+同源终态问题唯一；PATCH 行锁与 expected_revision 防覆盖；人工字段变化和 history
+原子提交。无变更 PATCH 不加 revision/history，状态重开清空当前结论且保留旧历史。
+客户端使用 session/Workspace/source key 与存活检查隔离迟到响应；模糊写入或冲突
+先核查，显式重新读取通过 editor epoch 替换草稿，包括 revision 不变的情况。
+
+独立只读安全/隔离/迁移复审完成：发现并修复上述同 revision 草稿刷新问题，
+已加入回归测试，无剩余阻塞发现。复审未运行共享数据库测试；数据库验证由主代理串行完成。
+实施与验证详情、截图及环境限制见 [018-bad-case-management-verification.md](018-bad-case-management-verification.md)。
+Issue #42 在人工合并 PR #43 前保持打开；尚未执行任何运行/生产数据库迁移。

@@ -9,6 +9,7 @@ import {
   listEvaluationRuns, listRunCases, Rate, RunCase, RunCaseDetail,
 } from "@/utils/evaluation-runs";
 import { displayMessage, formatEnumLabel, formatTimestamp } from "@/utils/presentation";
+import { RegisterBadCase } from "./bad-cases";
 
 type Props = { workspaceId: string; accessToken: string; dataset: EvaluationDataset;
   agents: AgentSummary[]; onUnauthorized: () => void };
@@ -127,6 +128,7 @@ function WorkspaceRuns({ workspaceId, accessToken, dataset, agents, onUnauthoriz
       <p>预期结果：</p><pre>{JSON.stringify(detail.expected_behavior_snapshot, null, 2)}</pre>
       <p>实际结果：</p><pre>{JSON.stringify(detail.actual_behavior, null, 2)}</pre>
       <p>未通过的检查： {Object.entries(detail.comparison_checks ?? {}).filter(([, matched]) => !matched).map(([key]) => formatEnumLabel(key)).join(", ") || "无"}</p>
+      <RegisterBadCase workspaceId={workspaceId} accessToken={accessToken} onUnauthorized={onUnauthorized} source={detail} runTerminal={selected?.status === "completed" || selected?.status === "failed"} />
     </article>}
   </section>;
 }

@@ -7,7 +7,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import inspect, update
+from sqlalchemy import MetaData, inspect, update
 from sqlalchemy.exc import IntegrityError
 
 from alembic import command
@@ -27,8 +27,12 @@ def test_0012_roundtrip_existing_tables_unchanged(postgres_engine, database_urls
     assert database_urls[1].database == "enterprise_ai_workbench_test"
     config = Config(str(BACKEND / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["0012"]
+    assert script.get_heads() == ["0013"]
     assert script.get_revision("0012").down_revision == "0011"
+    legacy = MetaData(naming_convention=Base.metadata.naming_convention)
+    for table in Base.metadata.sorted_tables:
+        if table.name not in {"bad_cases", "bad_case_history"}:
+            table.to_metadata(legacy)
     with postgres_engine.connect() as connection:
         config.attributes["connection"] = connection
         try:
@@ -45,7 +49,7 @@ def test_0012_roundtrip_existing_tables_unchanged(postgres_engine, database_urls
             }
             for name, columns in before.items():
                 assert repr(inspector.get_columns(name)) == repr(columns)
-            assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
+            assert compare_metadata(MigrationContext.configure(connection), legacy) == []
             for name in ("evaluation_runs", "evaluation_run_cases"):
                 assert all(
                     fk["options"]["ondelete"] == "RESTRICT"
@@ -54,7 +58,7 @@ def test_0012_roundtrip_existing_tables_unchanged(postgres_engine, database_urls
             command.downgrade(config, "0011")
             assert set(inspect(connection).get_table_names()) == set(before)
             command.upgrade(config, "0012")
-            assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
+            assert compare_metadata(MigrationContext.configure(connection), legacy) == []
         finally:
             connection.rollback()
             command.upgrade(config, "head")

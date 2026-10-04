@@ -295,13 +295,15 @@ review. Delivery awaits human merge.
 
 ### Bad Case Management
 
-Feature 018 Phase A specification proposal:
+Feature 018 H1-H4-approved Phase B implementation:
 `docs/features/018-bad-case-management.md`, Issue #42, branch
-`feat/bad-case-management`. Proposed scope is manual issue tracking from
+`feat/bad-case-management`, PR #43 (pending human merge). Scope is manual issue tracking from
 terminal Evaluation Run Cases, separating behavioral FAIL, execution ERROR
 and human review, with classification, possible causes, handling state and
-atomic change history. No implementation or migration is approved by this
-proposal. Run/version comparison and retest linking are deferred to proposed
+atomic change history, with revision conflict protection and additive migration
+`0013`. Runtime migration remains unauthorized. Verification is recorded in
+`docs/features/018-bad-case-management-verification.md`.
+Run/version comparison and retest linking are deferred to proposed
 Feature 023 in planning PR #40, which is not yet merged.
 
 - Identify failed cases
