@@ -1,6 +1,6 @@
 # Feature 017 - Chinese UI Refresh
 
-Status: Implemented and verified; PR #41 ready for human review and merge
+Status: Merged/delivered in PR #41 on 2026-10-04; Issue #39 closed
 Baseline: main at `746fbeb9580fed6719abd9d7014297151aaa55f8`
 Branch: `feat/chinese-ui-refresh`
 Risk: Normal - presentation changes only
@@ -96,4 +96,4 @@ GitHub Issue: [#39](https://github.com/SongHaiwen-creator/enterprise-ai-workbenc
 Implementation branch: `feat/chinese-ui-refresh`.
 PR: [#41](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/41).
 Verification and screenshots: [017-chinese-ui-refresh-verification.md](017-chinese-ui-refresh-verification.md).
-Status: implemented and verified; human review and merge pending.
+Status: implemented, verified and human-merged in PR #41 on 2026-10-04.

@@ -1,12 +1,13 @@
 # Enterprise AI Workbench - Product Specification
 
-Version: 0.1
+Version: 0.2 (MVP scope revised 2026-10-04)
 
 ## 1. Product Overview
 
 Enterprise AI Workbench is a B2B AI platform for enterprise
-knowledge management, AI agent configuration, workflow execution
-and AI evaluation.
+knowledge management, AI agent configuration, controlled tool execution
+and AI evaluation. Workflow configuration and orchestration are deferred
+beyond the current MVP.
 
 The first scenario focuses on internal employee services.
 
@@ -63,7 +64,6 @@ Needs:
 Needs:
 - Configure AI agent capabilities
 - Configure tools
-- Configure workflows
 - Review execution results
 
 ### System Administrator
@@ -88,7 +88,6 @@ The system contains the following core objects:
 - Document
 - Agent
 - Tool
-- Workflow
 - Approval
 - Conversation
 - Execution Log
@@ -174,7 +173,6 @@ The MVP will contain:
 
 - Agent
 - Tool Calling
-- Workflow
 - Human Approval
 
 ### Phase 4
@@ -189,6 +187,7 @@ The MVP will contain:
 
 The first version will NOT support:
 
+- Workflow configuration, orchestration, run history, or workflow resume
 - Complex multi-agent collaboration
 - Model training
 - Fine-tuning
@@ -199,6 +198,10 @@ The first version will NOT support:
 - Real financial transactions
 
 Enterprise APIs will initially use mock services.
+The 2026-10-04 scope decision defers Workflow while retaining Conversation,
+parameter collection and employee request tracking through the existing
+Agent, registered Tool and Human Approval boundaries. Sensitive operations
+continue to require Human Approval; deferral does not change this policy.
 
 ---
 

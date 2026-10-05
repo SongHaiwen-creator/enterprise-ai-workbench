@@ -1,6 +1,6 @@
 # Enterprise AI Workbench - Roadmap
 
-Version: 0.1
+Version: 0.2 (MVP scope revised 2026-10-04)
 
 ## 1. Development Principles
 
@@ -225,8 +225,8 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
 Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
 Feature 016 Evaluation Run & Metrics merged/delivered in PR #37 on 2026-10-03;
-Feature 017 Chinese UI Refresh is being implemented as a user-prioritized
-presentation update before Bad Case Management)
+Feature 017 Chinese UI Refresh merged/delivered in PR #41 on 2026-10-04;
+Bad Case Management and version comparison remain unfinished)
 
 Goal:
 
@@ -266,9 +266,9 @@ Support evaluation cases for:
 ### Evaluation Run & Metrics (Feature 016)
 
 H1-H7-approved Phase B implementation: `docs/features/016-evaluation-run-metrics.md`.
-Revision `0012`, bounded synchronous runner and administration UI are implemented
-and merged into `main` through PR #37 on 2026-10-03. Issue #36 is closed.
-Metrics supported by current structured Case expectations are:
+Revision `0012`, bounded synchronous runner and administration UI were delivered
+in PR #37 on 2026-10-03. Issue #36 is closed. This does not imply a runtime
+database upgrade. Metrics supported by current structured Case expectations are:
 
 - Overall/category pass rates with separate ERROR counts and evaluation coverage
 - Routing match rate
@@ -289,9 +289,9 @@ Issue #39, branch `feat/chinese-ui-refresh`. Public Chinese product introduction
 at `/`, existing platform at `/app` with Assistant as the default, shared blue
 and white styling, grouped navigation and mobile drawer. Existing Feature 016
 run/metrics UI is included. No new product capabilities, migrations or
-permission-policy changes; Bad Case Management remains the next unfinished
-product capability. Required verification passed; PR #41 is ready for human
-review. Delivery awaits human merge.
+permission-policy changes. Required verification passed; PR #41 merged on
+2026-10-04 and Issue #39 is closed. Bad Case Management remains the next
+unfinished product capability.
 
 ### Bad Case Management
 
@@ -367,3 +367,26 @@ The final project should demonstrate:
 - Bad case analysis
 - Product-to-engineering collaboration
 - Git-based development workflow
+
+---
+
+# 9. Full MVP Delivery Planning
+
+The remaining scope and worktree sequence are proposed in
+[MVP_DELIVERY_PLAN.md](MVP_DELIVERY_PLAN.md). That plan covers Bad Case management,
+API-only administration UI, document and Agent versions, evaluation comparison,
+Conversation and parameter collection, employee
+request tracking, Workspace/profile UX, and final acceptance/delivery.
+
+The 2026-10-04 scope decision defers Workflow definition and execution beyond
+the current MVP. Former planning entries 024/025 are removed from active scope;
+other identifiers are preserved. Active proposals are 018-023 and 026-029
+(ten Features), not started or implementation-approved. Workflow is not an MVP
+completion requirement. Conversation and My Requests reuse existing Agent,
+registered Tool and Approval boundaries without a workflow runner.
+
+Feature 017 Chinese UI Refresh was delivered in PR #41 on 2026-10-04;
+Issue #39 is closed. Proposed Feature 018 Bad Case Management is next.
+Start only the next Feature in a new thread from the latest merged main, following
+its Phase A specification and high-risk approvals. One Feature remains active
+at a time; worktrees isolate implementation and review without changing this rule.

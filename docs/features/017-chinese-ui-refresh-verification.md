@@ -2,7 +2,7 @@
 
 Date: 2026-10-04 (Asia/Shanghai). Issue: [#39](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/39).
 PR: [#41](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/41).
-Implementation commit: `cc3e010`. Required verification has passed; ready for human review and merge.
+Implementation commit: `cc3e010`. Required verification passed; human-merged in PR #41 on 2026-10-04. Issue #39 is closed.
 Baseline: merged PR #37, main commit `746fbeb9580fed6719abd9d7014297151aaa55f8`.
 
 ## Implementation
@@ -59,7 +59,7 @@ Docker was restored on 2026-10-04. PostgreSQL integration verification passed: *
 
 The earlier Docker connection failure is resolved. A first retry with the separately created `enterprise_ai_workbench_ui_20261004_test` database reached 540 passing tests but failed the evaluation fixtures' hard-coded database-name assertions (2 failures, 359 setup errors). Verification was then rerun against the repository-required test database without changing tests or safety checks. The integration run emitted 68 existing Starlette/Alembic deprecation warnings.
 
-The subsequent full backend run passed **1520 tests with no skips** and the same 68 deprecation warnings. Commands used workspace-local `--basetemp` directories. Required verification is complete; human merge is the remaining delivery gate.
+The subsequent full backend run passed **1520 tests with no skips** and the same 68 deprecation warnings. Commands used workspace-local `--basetemp` directories. Required verification is complete; human merge completed in PR #41 on 2026-10-04.
 
 ## Review Notes and Limits
 
@@ -68,4 +68,4 @@ The subsequent full backend run passed **1520 tests with no skips** and the same
 - Platform state remains in memory, as before. Refreshing requires login. Returning to the public page leaves the platform session.
 - PingFang renders on systems where installed; Windows uses the declared Chinese sans-serif fallback. No proprietary font file is bundled.
 - Unknown API enum values and arbitrary resource names remain visible unchanged; known errors receive Chinese presentation while raw `ApiError.message` comparisons remain unchanged.
-- Human merge remains required. Bad Case Management is not included in this change.
+- Human merge completed in PR #41 on 2026-10-04. Bad Case Management is not included in this change.
