@@ -245,7 +245,7 @@ def verify_resources(op, manifest, cases):
                 raise ValueError("Product case differs from frozen baseline")
 
 
-def evaluate_agent(op, cases):
+def evaluate_agent(op, cases, diagnosis=None):
     r = op.state["resources"]
     for batch_id, rows in batches(cases):
         if batch_id not in op.state["runs"]:
@@ -278,7 +278,8 @@ def evaluate_agent(op, cases):
             op.state["observations"][expected_ids[v["case_id"]]] = detail
         op.persist()
         print(f"Agent: {batch_id} {run['status']}", flush=True)
-        if any(v.get("error_category") in SYSTEMIC_ERRORS for v in actual_rows):
+        stop_errors = SYSTEMIC_ERRORS - ({"provider_contract"} if diagnosis else set())
+        if any(v.get("error_category") in stop_errors for v in actual_rows):
             raise ValueError("Systemic evaluation failure; stopped further paid batches")
 
 
@@ -328,10 +329,18 @@ def check_generation(state, generation):
         raise ValueError("Answer generation metadata differs from frozen configuration")
 
 
-def rag(op, cases, stage):
+def rag(op, cases, stage, diagnosis=None):
     if op.state.get("pending_write") or op.state.get("configuration_drift"):
         raise ValueError("Interrupted request or configuration drift requires reconciliation")
-    if any(v.get("request_status") == "failure" for v in op.state[stage].values()):
+    if any(
+        v.get("request_status") == "failure"
+        and not (
+            diagnosis
+            and stage == "answers"
+            and v.get("failure_category") == "generation_http_502"
+        )
+        for v in op.state[stage].values()
+    ):
         raise ValueError("A prior RAG failure requires diagnosis; no paid requests on resume")
     r = op.state["resources"]
     names = {v["file_name"]: key for key, v in r["documents"].items()}
@@ -405,6 +414,14 @@ def rag(op, cases, stage):
             op.persist()
             print(f"{stage}: {c['id']} success", flush=True)
         except (httpx.HTTPError, KeyError, TypeError, ValueError) as error:
+            generation_failure = False
+            if isinstance(error, httpx.HTTPStatusError) and error.response.status_code == 502:
+                try:
+                    generation_failure = (
+                        error.response.json().get("detail") == "Generation provider request failed"
+                    )
+                except (ValueError, AttributeError):
+                    pass
             records[c["id"]] = {
                 **question,
                 "request_status": "failure",
@@ -412,7 +429,16 @@ def rag(op, cases, stage):
                 "http_status": error.response.status_code
                 if isinstance(error, httpx.HTTPStatusError)
                 else None,
+                "failure_category": "generation_http_502" if generation_failure else None,
             }
+            if diagnosis and stage == "answers" and generation_failure:
+                # Received HTTP error on a read-only endpoint, not a lost product write.
+                # Preserve the failed first attempt and measure only remaining questions.
+                # HTTP 502 hides the exact cause; do not label every error a schema defect.
+                op.state["pending_write"] = None
+                op.persist()
+                print(f"{stage}: {c['id']} failure (recorded, not retried)", flush=True)
+                continue
             op.persist()
             raise ValueError(
                 "RAG request failed; saved failure and stopped paid requests"
@@ -463,7 +489,22 @@ def main(argv=None):
     p.add_argument("--base-url", default="http://127.0.0.1:8000")
     p.add_argument("--workspace-id")
     p.add_argument("--acknowledge-egress", action="store_true")
+    p.add_argument(
+        "--continue-diagnosed-errors",
+        metavar="REASON",
+        help=(
+            "Record a diagnosis and measure remaining first attempts after Agent "
+            "provider_contract or answer generation HTTP 502 errors; no retries. "
+            "Other failures and ambiguous requests still stop."
+        ),
+    )
     args = p.parse_args(argv)
+    if args.continue_diagnosed_errors is not None and (
+        args.stage not in {"agent", "answers", "all"}
+        or not args.continue_diagnosed_errors.strip()
+        or len(args.continue_diagnosed_errors) > 1000
+    ):
+        raise ValueError("A bounded diagnosis is required for Agent/answer measurement")
     manifest, cases, fingerprint = load(args.data_dir)
     if args.stage == "validate":
         print(
@@ -537,6 +578,17 @@ def main(argv=None):
             {"workspace_id": workspace_id, "base_url": args.base_url, "mode": "live_product"},
         )
         op = Operations(client, state, state_path)
+        if args.continue_diagnosed_errors:
+            state.setdefault("diagnosis_log", []).append(
+                {
+                    "at": utc_now(),
+                    "stage": args.stage,
+                    "reason": args.continue_diagnosed_errors.strip(),
+                    "allowed_errors": ["provider_contract", "generation_http_502"],
+                    "mode": "remaining first attempts; failures retained; no retries",
+                }
+            )
+            op.persist()
         try:
             if args.stage in {"prepare", "all"}:
                 prepare(op, manifest, cases, args.data_dir)
@@ -548,9 +600,9 @@ def main(argv=None):
                 ):
                     probe_configuration(op, cases)
                     if stage == "agent":
-                        evaluate_agent(op, cases)
+                        evaluate_agent(op, cases, args.continue_diagnosed_errors)
                     else:
-                        rag(op, cases, stage)
+                        rag(op, cases, stage, args.continue_diagnosed_errors)
         finally:
             report(cases, state, args.output_dir)
     return 0

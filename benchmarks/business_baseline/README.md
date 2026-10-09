@@ -78,6 +78,14 @@ Index API不暴露chunking实现哈希，因而不能证明探针与请求之间
 再清除标记继续。不要直接删标记或反复运行 POST。失败的 RAG 请求先诊断，不自动重试。
 输出目录仅供本地使用，已忽略 Git；不含登录凭据，但答案和引用仍须受控。
 
+如果已经诊断了模型契约问题，需要收齐本轮的**首次尝试**，可为 `agent` 或 `answers`
+显式传入 `--continue-diagnosed-errors '诊断依据与继续原因'`。理由写入 checkpoint。
+Agent 仅继续 `provider_contract` 类别；答案仅继续响应正文明确为
+`Generation provider request failed` 的 HTTP 502。后者不暴露具体根因，不能把所有
+502 都归为已诊断的引用缺陷。已失败和已成功的题目均不重试，原失败保留在分母；
+其他错误、配置漂移或丢失响应仍停止。旧版未分类的失败须先核对并记录分类依据。
+此选项用于测量已知不稳定配置的现状，不代表问题已修复或允许进入生产。
+
 `summary.json` 为机器指标，`report.md` 为中文概览。署名复核后运行：
 
 ```powershell

@@ -17,6 +17,8 @@ work requested by the user after Feature 018, not implementation of Features 019
 - Existing authenticated APIs only; dedicated benchmark KB and Agent; batches of
   at most five active cases, retaining original user-created datasets and resources.
 - A sequential resumable local CLI for preparation, measurement and reporting.
+- Representative live failures are triaged through existing Feature 018 Bad Case
+  APIs, retaining their source results and leaving findings open for review.
 - Current RAG Top-K 5, chunk size 1000/overlap 200, approved models/prompts unchanged.
 
 ## Business rules
@@ -59,6 +61,11 @@ reported as blocked, never converted into fake live results. Ambiguous writes st
 for reconciliation; no automatic replay of a POST. Successful measurements are
 checkpointed and not repeated on resume. A first systemic provider error stops
 paid execution for diagnosis.
+After recording an explicit diagnosis, an operator may collect remaining first
+attempts for Agent `provider_contract` or the answer endpoint's known generation
+HTTP 502 response. These failures stay failures and are never replayed. The latter
+does not disclose its exact cause; a diagnosed example cannot establish all HTTP
+502 causes. Unknown errors, configuration drift and ambiguous requests still stop.
 
 ## Acceptance criteria
 

@@ -19,6 +19,7 @@ def summary(cases, state):
         "target": state["target"],
         "configuration": state.get("configuration"),
         "configuration_drift": state.get("configuration_drift", False),
+        "diagnosis_log": state.get("diagnosis_log", []),
         "groups": {},
     }
     observations = state.get("observations", {})
@@ -44,7 +45,7 @@ def summary(cases, state):
                 else "live_model",
             }
     questions = [
-        dict(question_id=c["id"], expected_doc_ids=c.get("expected_doc_ids", []))
+        {"question_id": c["id"], "expected_doc_ids": c.get("expected_doc_ids", [])}
         for c in cases
         if c["case_type"] == "knowledge_qa"
         or (
@@ -149,9 +150,12 @@ def markdown(result):
         recall_label = f"{recall['macro_average']:.1%}" if measured else "未评测"
         lines += [
             "",
-            f"{split} 检索 Recall@5：{recall_label}；"
-            f"成功问题 {measures['successful_answerable_question_count']}/{recall['denominator']}。"
-            "失败和未测按未命中计；未测不能作为召回质量结论。",
+            (
+                f"{split} 检索 Recall@5：{recall_label}；"
+                f"成功问题 {measures['successful_answerable_question_count']}/"
+                f"{recall['denominator']}。"
+                "失败和未测按未命中计；未测不能作为召回质量结论。"
+            ),
         ]
     lines += [
         "",

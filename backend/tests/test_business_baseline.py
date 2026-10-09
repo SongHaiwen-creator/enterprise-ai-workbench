@@ -9,6 +9,7 @@ from benchmarks.business_baseline.reporting import markdown, summary
 from benchmarks.business_baseline.runner import (
     Operations,
     check_generation,
+    evaluate_agent,
     freeze_configuration,
     main,
     offline_policy,
@@ -172,6 +173,86 @@ def test_failed_rag_checkpoint_stops_paid_resume(tmp_path, frozen):
         op = Operations(client, state, tmp_path / "state.json")
         with pytest.raises(ValueError, match="prior RAG failure"):
             rag(op, cases, "answers")
+
+
+def test_diagnosed_answer_errors_keep_first_failure_and_never_replay(tmp_path, frozen):
+    _, cases, state = frozen
+    rows = cases[:2]
+    state["resources"]["kb"] = "kb"
+    state["answers"][rows[0]["id"]] = {
+        "question_id": rows[0]["id"],
+        "expected_doc_ids": rows[0]["expected_doc_ids"],
+        "request_status": "failure",
+        "failure_category": "generation_http_502",
+    }
+    calls = []
+
+    def failed(request):
+        calls.append(json.loads(request.content)["question"])
+        return httpx.Response(502, json={"detail": "Generation provider request failed"})
+
+    with httpx.Client(transport=httpx.MockTransport(failed), base_url="http://localhost") as client:
+        rag(Operations(client, state, tmp_path / "state.json"), rows, "answers", "diagnosed")
+    assert calls == [rows[1]["test_input"]]
+    assert state["pending_write"] is None
+    assert all(state["answers"][c["id"]]["request_status"] == "failure" for c in rows)
+    assert summary(cases, state)["answers"]["development"]["requests"]["failed"] == 2
+
+
+@pytest.mark.parametrize("kind", ["timeout", "embedding", "unauthorized"])
+def test_diagnosis_cannot_allow_unrelated_or_ambiguous_rag_failure(tmp_path, frozen, kind):
+    _, cases, state = frozen
+    state["resources"]["kb"] = "kb"
+    calls = []
+
+    def failed(request):
+        calls.append(request.method)
+        if kind == "timeout":
+            raise httpx.ReadTimeout("synthetic error", request=request)
+        return httpx.Response(
+            502 if kind == "embedding" else 401,
+            json={"detail": "Embedding provider request failed"},
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(failed), base_url="http://localhost") as client:
+        with pytest.raises(ValueError, match="RAG request failed"):
+            rag(Operations(client, state, tmp_path / "state.json"), cases, "answers", "diagnosed")
+    assert calls == ["POST"]
+    assert state["pending_write"] is not None
+
+
+@pytest.mark.parametrize(
+    ("category", "diagnosis", "stops"),
+    [("provider_contract", None, True), ("provider_contract", "diagnosed", False),
+     ("provider_failure", "diagnosed", True)],
+)
+def test_agent_diagnosis_only_allows_contract_errors(tmp_path, frozen, category, diagnosis, stops):
+    _, cases, state = frozen
+    rows = cases[:1]
+    batch_id = batches(rows)[0][0]
+    state["resources"]["datasets"][batch_id] = "dataset"
+    state["resources"]["cases"][rows[0]["id"]] = "case"
+    state["runs"][batch_id] = "run"
+    detail = {"id": "result", "case_id": "case", "error_category": category, "result": "error"}
+
+    def response(request):
+        assert request.method == "GET"  # Existing failed runs are never replayed.
+        if request.url.path.endswith("/cases"):
+            return httpx.Response(200, json={"items": [detail]})
+        return httpx.Response(200, json=detail if request.url.path.endswith("/result") else {
+            "config_snapshot": {}, "status": "completed"
+        })
+
+    with httpx.Client(
+        transport=httpx.MockTransport(response), base_url="http://localhost"
+    ) as client:
+        op = Operations(client, state, tmp_path / "state.json")
+        if stops:
+            with pytest.raises(ValueError, match="Systemic"):
+                evaluate_agent(op, rows, diagnosis)
+        else:
+            evaluate_agent(op, rows, diagnosis)
+    assert state["observations"][rows[0]["id"]]["result"] == "error"
 
 
 def test_no_egress_flag_prevents_login_and_calls(tmp_path):
