@@ -319,10 +319,13 @@ User-requested benchmark work after Feature 018: Issue #44,
 `docs/evaluation/business-baseline-spec.md`. An original synthetic employee-service
 corpus contains 12 policies and 108 cases, grouped into 74 development and 34
 holdout cases. It reuses existing APIs and does not implement Features 019–023.
-24 offline policy simulations passed. Live RAG/Agent measurement and runtime
-import await normal product login credentials; no business quality or ROI result
-is claimed. Business-owner gold review and real-task pilot measurements remain
-necessary. See `docs/evaluation/business-baseline-v1-report.md` and
+After normal login configuration, all 108 cases were imported and measured in
+26 Runs: 91 PASS, 9 FAIL, 8 ERROR. RAG measured 56 retrieval and 56 answer first
+attempts; 48 answerable questions had 100% Document Recall@5 on 12 short synthetic
+policies. Four representative findings are open in existing Bad Case management;
+tool holdout expectations need review. These are synthetic structural measures,
+not real business accuracy or ROI. Business-owner gold/answer review and real-task
+pilot measurements remain necessary. See `docs/evaluation/business-baseline-v1-report.md` and
 `docs/evaluation/employee-service-pilot.md`.
 
 ## Acceptance Criteria
