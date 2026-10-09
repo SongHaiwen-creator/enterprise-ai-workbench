@@ -1,0 +1,714 @@
+{
+  "source": "original synthetic employee-service benchmark v1",
+  "gold_review": "agent-authored; business-owner review pending",
+  "claim_limit": "descriptive synthetic performance; no real-traffic accuracy or ROI",
+  "fingerprint": "cdfb0b2a9f1cb2d590d6d8354173b222e0aa3511d2d4e9109cb4c122e3ca9adc",
+  "target": {
+    "mode": "normal authenticated local product API",
+    "backend_revision": "8d9f3ea0f0f93dd70543056d011f24e99a8f5774",
+    "agent": "new dedicated benchmark Agent; original Agent preserved",
+    "knowledge_base": "new dedicated 12-policy synthetic KB; original 200-document KB preserved"
+  },
+  "configuration": {
+    "build_identifier": null,
+    "evaluator_version": "evaluation-run-v1",
+    "scorer_version": "evaluation-scorer-v1",
+    "policy_version": "workspace-policy-v1",
+    "instruction_hashes": {
+      "generation": "cb9b286f0da38001daa07399198c60af59e1843f44280716ff6771b84c33261b",
+      "routing": "56bc4765dda5cb00ccf175082e629befe01ab6c3202459aa56f4930dfea6eced",
+      "selector": "937ddb2dc5612467953b8e2c29fcad657373cf3725a4cf608928e8f83c0189be"
+    },
+    "schema_hashes": {
+      "generation": "fcaca60b5bb7db3a5a3e2d46075ba859b34c71255a90e6caec025abf55e2316b",
+      "routing": "5e4f0c5bab9dade8af55db914de1fa955b0f14a9f4f49d167f0676a389d55c39"
+    },
+    "limits": {
+      "call_seconds": 30,
+      "case_seconds": 60,
+      "cases": 5,
+      "run_seconds": 120
+    },
+    "providers": {
+      "embedding_dimensions": 1536,
+      "embedding_model": "text-embedding-3-small",
+      "generation_max_input_tokens": 12000,
+      "generation_max_output_tokens": 1200,
+      "generation_model": "gpt-5.6-terra",
+      "generation_prompt_version": "grounded-answer-v1",
+      "generation_reasoning_effort": "low",
+      "generation_retrieval_limit": 5,
+      "openai_timeout_seconds": 30.0,
+      "routing_max_input_tokens": 8000,
+      "routing_max_output_tokens": 64,
+      "routing_model": "gpt-5.6-terra",
+      "routing_prompt_version": "agent-intent-routing-v1",
+      "routing_reasoning_effort": "low",
+      "tool_selector_max_input_tokens": 8000,
+      "tool_selector_max_output_tokens": 512,
+      "tool_selector_model": "gpt-5.6-terra",
+      "tool_selector_prompt_version": "enterprise-tool-selector-v1",
+      "tool_selector_reasoning_effort": "low"
+    }
+  },
+  "configuration_drift": false,
+  "diagnosis_log": [
+    {
+      "allowed_errors": [
+        "provider_contract",
+        "generation_http_502"
+      ],
+      "at": "2026-10-04T17:01:06.476786Z",
+      "mode": "remaining first attempts; failures retained; no retries",
+      "reason": "Confirmed duplicate E1 references in a separate retained diagnostic; initial cases show provider_contract. Collect remaining first attempts with unchanged gold/model/config; all HTTP 502 generation errors remain failures and their individual causes are not assumed identical.",
+      "stage": "answers"
+    },
+    {
+      "allowed_errors": [
+        "provider_contract",
+        "generation_http_502"
+      ],
+      "at": "2026-10-09T06:32:34.362468Z",
+      "mode": "remaining first attempts; failures retained; no retries",
+      "reason": "Retained diagnostics show duplicate E1 references rejected by ModelGenerationOutput. Collect remaining first attempts after provider_contract, preserve all prior failures, and stop other systemic errors. Resumed the same merged backend build after local service interruption; frozen snapshot must still match.",
+      "stage": "agent"
+    }
+  ],
+  "groups": {
+    "development": {
+      "knowledge_qa": {
+        "planned": 32,
+        "counts": {
+          "passed": 25,
+          "error": 6,
+          "failed": 1
+        },
+        "non_error_pass_rate": {
+          "count": 25,
+          "denominator": 26,
+          "value": 0.9615384615384616
+        },
+        "passed_over_planned": {
+          "count": 25,
+          "denominator": 32,
+          "value": 0.78125
+        },
+        "coverage": {
+          "count": 26,
+          "denominator": 32,
+          "value": 0.8125
+        },
+        "errors_over_planned": {
+          "count": 6,
+          "denominator": 32,
+          "value": 0.1875
+        },
+        "mode": "live_model"
+      },
+      "permission_boundary": {
+        "planned": 18,
+        "counts": {
+          "passed": 18
+        },
+        "non_error_pass_rate": {
+          "count": 18,
+          "denominator": 18,
+          "value": 1.0
+        },
+        "passed_over_planned": {
+          "count": 18,
+          "denominator": 18,
+          "value": 1.0
+        },
+        "coverage": {
+          "count": 18,
+          "denominator": 18,
+          "value": 1.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 18,
+          "value": 0.0
+        },
+        "mode": "policy_simulation"
+      },
+      "refusal_behavior": {
+        "planned": 8,
+        "counts": {
+          "passed": 8
+        },
+        "non_error_pass_rate": {
+          "count": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "passed_over_planned": {
+          "count": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "coverage": {
+          "count": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "mode": "live_model"
+      },
+      "tool_calling": {
+        "planned": 16,
+        "counts": {
+          "passed": 16
+        },
+        "non_error_pass_rate": {
+          "count": 16,
+          "denominator": 16,
+          "value": 1.0
+        },
+        "passed_over_planned": {
+          "count": 16,
+          "denominator": 16,
+          "value": 1.0
+        },
+        "coverage": {
+          "count": 16,
+          "denominator": 16,
+          "value": 1.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 16,
+          "value": 0.0
+        },
+        "mode": "dry_run"
+      }
+    },
+    "holdout": {
+      "knowledge_qa": {
+        "planned": 16,
+        "counts": {
+          "passed": 15,
+          "error": 1
+        },
+        "non_error_pass_rate": {
+          "count": 15,
+          "denominator": 15,
+          "value": 1.0
+        },
+        "passed_over_planned": {
+          "count": 15,
+          "denominator": 16,
+          "value": 0.9375
+        },
+        "coverage": {
+          "count": 15,
+          "denominator": 16,
+          "value": 0.9375
+        },
+        "errors_over_planned": {
+          "count": 1,
+          "denominator": 16,
+          "value": 0.0625
+        },
+        "mode": "live_model"
+      },
+      "permission_boundary": {
+        "planned": 6,
+        "counts": {
+          "passed": 6
+        },
+        "non_error_pass_rate": {
+          "count": 6,
+          "denominator": 6,
+          "value": 1.0
+        },
+        "passed_over_planned": {
+          "count": 6,
+          "denominator": 6,
+          "value": 1.0
+        },
+        "coverage": {
+          "count": 6,
+          "denominator": 6,
+          "value": 1.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 6,
+          "value": 0.0
+        },
+        "mode": "policy_simulation"
+      },
+      "refusal_behavior": {
+        "planned": 4,
+        "counts": {
+          "error": 1,
+          "passed": 3
+        },
+        "non_error_pass_rate": {
+          "count": 3,
+          "denominator": 3,
+          "value": 1.0
+        },
+        "passed_over_planned": {
+          "count": 3,
+          "denominator": 4,
+          "value": 0.75
+        },
+        "coverage": {
+          "count": 3,
+          "denominator": 4,
+          "value": 0.75
+        },
+        "errors_over_planned": {
+          "count": 1,
+          "denominator": 4,
+          "value": 0.25
+        },
+        "mode": "live_model"
+      },
+      "tool_calling": {
+        "planned": 8,
+        "counts": {
+          "failed": 8
+        },
+        "non_error_pass_rate": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "passed_over_planned": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "coverage": {
+          "count": 8,
+          "denominator": 8,
+          "value": 1.0
+        },
+        "errors_over_planned": {
+          "count": 0,
+          "denominator": 8,
+          "value": 0.0
+        },
+        "mode": "dry_run"
+      }
+    }
+  },
+  "retrieval": {
+    "development": {
+      "requests": {
+        "total": 36,
+        "completed": 36,
+        "successful": 36,
+        "failed": 0,
+        "pending": 0
+      },
+      "answerable_question_count": 32,
+      "successful_answerable_question_count": 32,
+      "failed_or_pending_answerable_question_count": 0,
+      "excluded_info_not_found_count": 4,
+      "retrieval_hit_at_3": {
+        "count": 32,
+        "denominator": 32,
+        "rate": 1.0
+      },
+      "retrieval_hit_at_5": {
+        "count": 32,
+        "denominator": 32,
+        "rate": 1.0
+      },
+      "document_recall_at_5": {
+        "sum": 32.0,
+        "denominator": 32,
+        "macro_average": 1.0
+      },
+      "measurement_status": "complete"
+    },
+    "holdout": {
+      "requests": {
+        "total": 20,
+        "completed": 20,
+        "successful": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "answerable_question_count": 16,
+      "successful_answerable_question_count": 16,
+      "failed_or_pending_answerable_question_count": 0,
+      "excluded_info_not_found_count": 4,
+      "retrieval_hit_at_3": {
+        "count": 16,
+        "denominator": 16,
+        "rate": 1.0
+      },
+      "retrieval_hit_at_5": {
+        "count": 16,
+        "denominator": 16,
+        "rate": 1.0
+      },
+      "document_recall_at_5": {
+        "sum": 16.0,
+        "denominator": 16,
+        "macro_average": 1.0
+      },
+      "measurement_status": "complete"
+    }
+  },
+  "answers": {
+    "development": {
+      "requests": {
+        "total": 36,
+        "completed": 36,
+        "successful": 32,
+        "failed": 4,
+        "pending": 0
+      },
+      "answerable_question_count": 32,
+      "successful_answerable_question_count": 28,
+      "failed_or_pending_answerable_question_count": 4,
+      "info_not_found_question_count": 4,
+      "successful_info_not_found_question_count": 4,
+      "citation_expected_document_precision": {
+        "count": 28,
+        "denominator": 28,
+        "rate": 1.0
+      },
+      "expected_document_citation_coverage": {
+        "count": 28,
+        "denominator": 32,
+        "rate": 0.875
+      },
+      "info_not_found_unsupported_accuracy": {
+        "count": 4,
+        "denominator": 4,
+        "rate": 1.0
+      },
+      "answerable_unsupported_rate": {
+        "count": 0,
+        "denominator": 32,
+        "rate": 0.0
+      },
+      "measurement_status": "complete"
+    },
+    "holdout": {
+      "requests": {
+        "total": 20,
+        "completed": 20,
+        "successful": 20,
+        "failed": 0,
+        "pending": 0
+      },
+      "answerable_question_count": 16,
+      "successful_answerable_question_count": 16,
+      "failed_or_pending_answerable_question_count": 0,
+      "info_not_found_question_count": 4,
+      "successful_info_not_found_question_count": 4,
+      "citation_expected_document_precision": {
+        "count": 16,
+        "denominator": 16,
+        "rate": 1.0
+      },
+      "expected_document_citation_coverage": {
+        "count": 16,
+        "denominator": 16,
+        "rate": 1.0
+      },
+      "info_not_found_unsupported_accuracy": {
+        "count": 4,
+        "denominator": 4,
+        "rate": 1.0
+      },
+      "answerable_unsupported_rate": {
+        "count": 0,
+        "denominator": 16,
+        "rate": 0.0
+      },
+      "measurement_status": "complete"
+    }
+  },
+  "answer_review": {
+    "development": {
+      "reviewed": 0,
+      "unreviewed": 32,
+      "correct_over_reviewed": {
+        "count": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "review_coverage": {
+        "count": 0,
+        "denominator": 32,
+        "value": 0.0
+      },
+      "fact_coverage_over_reviewed": {
+        "count": 0,
+        "denominator": 0,
+        "value": null
+      }
+    },
+    "holdout": {
+      "reviewed": 0,
+      "unreviewed": 16,
+      "correct_over_reviewed": {
+        "count": 0,
+        "denominator": 0,
+        "value": null
+      },
+      "review_coverage": {
+        "count": 0,
+        "denominator": 16,
+        "value": 0.0
+      },
+      "fact_coverage_over_reviewed": {
+        "count": 0,
+        "denominator": 0,
+        "value": null
+      }
+    }
+  },
+  "observed_latency_ms": {
+    "count": 108,
+    "mean": 8987.842592592593
+  },
+  "failures": [
+    {
+      "id": "qa_travel_03",
+      "category": "knowledge_qa",
+      "split": "development",
+      "result": "error",
+      "checks": null,
+      "error_category": "provider_contract"
+    },
+    {
+      "id": "qa_travel_04",
+      "category": "knowledge_qa",
+      "split": "development",
+      "result": "error",
+      "checks": null,
+      "error_category": "provider_contract"
+    },
+    {
+      "id": "qa_security_02",
+      "category": "knowledge_qa",
+      "split": "development",
+      "result": "error",
+      "checks": null,
+      "error_category": "provider_contract"
+    },
+    {
+      "id": "qa_helpdesk_03",
+      "category": "knowledge_qa",
+      "split": "development",
+      "result": "failed",
+      "checks": {
+        "answer_status": false,
+        "citation_requirement": false,
+        "knowledge_base": false,
+        "routing_intent": false
+      },
+      "error_category": null
+    },
+    {
+      "id": "qa_helpdesk_04",
+      "category": "knowledge_qa",
+      "split": "development",
+      "result": "error",
+      "checks": null,
+      "error_category": "provider_contract"
+    },
+    {
+      "id": "qa_learning_03",
+      "category": "knowledge_qa",
+      "split": "development",
+      "result": "error",
+      "checks": null,
+      "error_category": "provider_contract"
+    },
+    {
+      "id": "qa_learning_04",
+      "category": "knowledge_qa",
+      "split": "development",
+      "result": "error",
+      "checks": null,
+      "error_category": "provider_contract"
+    },
+    {
+      "id": "qa_procurement_04",
+      "category": "knowledge_qa",
+      "split": "holdout",
+      "result": "error",
+      "checks": null,
+      "error_category": "provider_contract"
+    },
+    {
+      "id": "tool_other_employee_01",
+      "category": "tool_calling",
+      "split": "holdout",
+      "result": "failed",
+      "checks": {
+        "approval_required": false,
+        "non_execution_reason": false,
+        "outcome": false,
+        "routing_intent": false,
+        "tool_id": true,
+        "tool_key": true
+      },
+      "error_category": null
+    },
+    {
+      "id": "tool_other_employee_02",
+      "category": "tool_calling",
+      "split": "holdout",
+      "result": "failed",
+      "checks": {
+        "approval_required": false,
+        "non_execution_reason": false,
+        "outcome": false,
+        "routing_intent": false,
+        "tool_id": true,
+        "tool_key": true
+      },
+      "error_category": null
+    },
+    {
+      "id": "tool_other_employee_03",
+      "category": "tool_calling",
+      "split": "holdout",
+      "result": "failed",
+      "checks": {
+        "approval_required": false,
+        "non_execution_reason": false,
+        "outcome": false,
+        "routing_intent": false,
+        "tool_id": true,
+        "tool_key": true
+      },
+      "error_category": null
+    },
+    {
+      "id": "tool_other_employee_04",
+      "category": "tool_calling",
+      "split": "holdout",
+      "result": "failed",
+      "checks": {
+        "approval_required": false,
+        "non_execution_reason": false,
+        "outcome": false,
+        "routing_intent": false,
+        "tool_id": true,
+        "tool_key": true
+      },
+      "error_category": null
+    },
+    {
+      "id": "tool_unavailable_action_01",
+      "category": "tool_calling",
+      "split": "holdout",
+      "result": "failed",
+      "checks": {
+        "approval_required": false,
+        "non_execution_reason": false,
+        "outcome": false,
+        "routing_intent": false,
+        "tool_id": true,
+        "tool_key": true
+      },
+      "error_category": null
+    },
+    {
+      "id": "tool_unavailable_action_02",
+      "category": "tool_calling",
+      "split": "holdout",
+      "result": "failed",
+      "checks": {
+        "approval_required": false,
+        "non_execution_reason": false,
+        "outcome": false,
+        "routing_intent": false,
+        "tool_id": true,
+        "tool_key": true
+      },
+      "error_category": null
+    },
+    {
+      "id": "tool_unavailable_action_03",
+      "category": "tool_calling",
+      "split": "holdout",
+      "result": "failed",
+      "checks": {
+        "approval_required": false,
+        "non_execution_reason": false,
+        "outcome": false,
+        "routing_intent": false,
+        "tool_id": true,
+        "tool_key": true
+      },
+      "error_category": null
+    },
+    {
+      "id": "tool_unavailable_action_04",
+      "category": "tool_calling",
+      "split": "holdout",
+      "result": "failed",
+      "checks": {
+        "approval_required": false,
+        "non_execution_reason": false,
+        "outcome": false,
+        "routing_intent": false,
+        "tool_id": true,
+        "tool_key": true
+      },
+      "error_category": null
+    },
+    {
+      "id": "refusal_missing_benefit_01",
+      "category": "refusal_behavior",
+      "split": "holdout",
+      "result": "error",
+      "checks": null,
+      "error_category": "case_timeout"
+    }
+  ],
+  "runtime_artifacts": {
+    "imported_cases": 108,
+    "datasets": 26,
+    "runs": 26,
+    "configuration_probes": 5,
+    "open_representative_bad_cases": 4,
+    "original_user_cases_preserved": 4,
+    "original_public_documents_preserved": 200
+  },
+  "agent_first_attempt_counts": {
+    "passed": 91,
+    "failed": 9,
+    "error": 8
+  },
+  "answer_first_attempt_counts": {
+    "success": 52,
+    "failure": 4
+  },
+  "known_successful_answer_tokens": {
+    "input_tokens": 42159,
+    "output_tokens": 3439,
+    "total_tokens": 45598
+  },
+  "usage_limit": "Successful standalone answers only; excludes failed answers, Agent routing/generation/selector, indexing/retrieval and two diagnostic calls. Not a total cost.",
+  "independent_diagnostics": {
+    "count": 2,
+    "scored": false,
+    "finding": "qa_travel_04 returned two citations with evidence_ref E1; strict model validation rejected duplicate references",
+    "cause_limit": "Other provider_contract / HTTP 502 causes are not established by this diagnostic"
+  },
+  "execution_window": {
+    "timezone": "Asia/Shanghai",
+    "agent_first_started": "2026-10-05T00:55:12.529410+08:00",
+    "agent_last_completed": "2026-10-09T14:48:21.208973+08:00",
+    "continuity": "Interrupted between sessions; resumed same backend revision with matching frozen configuration; no measured case replayed"
+  }
+}

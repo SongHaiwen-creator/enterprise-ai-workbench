@@ -1,0 +1,67 @@
+{
+  "version": "synthetic-employee-v1",
+  "synthetic": true,
+  "gold_review": "agent-authored; business-owner review pending",
+  "documents": [
+    {
+      "id": "travel",
+      "file_name": "travel.txt",
+      "title": "差旅报销"
+    },
+    {
+      "id": "leave",
+      "file_name": "leave.txt",
+      "title": "请假流程"
+    },
+    {
+      "id": "remote",
+      "file_name": "remote.txt",
+      "title": "远程办公"
+    },
+    {
+      "id": "security",
+      "file_name": "security.txt",
+      "title": "信息安全"
+    },
+    {
+      "id": "access",
+      "file_name": "access.txt",
+      "title": "IT访问权限"
+    },
+    {
+      "id": "helpdesk",
+      "file_name": "helpdesk.txt",
+      "title": "IT服务台"
+    },
+    {
+      "id": "onboarding",
+      "file_name": "onboarding.txt",
+      "title": "新员工入职"
+    },
+    {
+      "id": "learning",
+      "file_name": "learning.txt",
+      "title": "学习培训"
+    },
+    {
+      "id": "procurement",
+      "file_name": "procurement.txt",
+      "title": "采购流程"
+    },
+    {
+      "id": "incident",
+      "file_name": "incident.txt",
+      "title": "生产事件响应"
+    },
+    {
+      "id": "assets",
+      "file_name": "assets.txt",
+      "title": "资产管理"
+    },
+    {
+      "id": "meetings",
+      "file_name": "meetings.txt",
+      "title": "会议与访客"
+    }
+  ]
+}
