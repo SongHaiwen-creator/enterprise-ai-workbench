@@ -313,6 +313,25 @@ Feature 023 in planning PR #40, which is not yet merged.
 - Record possible causes
 - Compare versions
 
+### Knowledge Administration UI (Feature 019 - awaiting human merge)
+
+The user selected Feature 019 as the next feature after delivered Feature 018
+and the supporting business evaluation baseline. Its specification is
+`docs/features/019-knowledge-admin-ui.md`, tracked in Issue #46 on branch
+`feat/knowledge-admin-ui`. The user approved proposal `1c61fca` with
+"approve，实施"; Phase B is implemented and verified in PR #47, awaiting
+human merge. Evidence: `docs/features/019-knowledge-admin-ui-verification.md`.
+The scope follows the Knowledge Administration UI entry in planning PR #40,
+which remains unmerged, and reuses merged Features 006-010 on latest `main`.
+
+Current-Workspace Knowledge/System administrators can manage Knowledge Base
+metadata and status, upload and inspect Documents, explicitly index/re-index,
+and disable/re-enable Documents through existing APIs. No new backend contract,
+migration, authorization policy or dependency was added. Parsing readiness
+and indexing success must remain distinct; Document version/replacement work
+is deferred to proposed Feature 021. This feature is not yet merged/delivered
+and does not approve the full remaining MVP plan.
+
 ### Supporting business evaluation baseline
 
 User-requested benchmark work after Feature 018: Issue #44,
