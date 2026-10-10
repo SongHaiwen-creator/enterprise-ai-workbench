@@ -7,7 +7,7 @@ import type { CurrentUser, WorkspaceListItem } from "@/utils/api";
 import { formatEnumLabel, initials } from "@/utils/presentation";
 import { BrandMark, Icon, type IconName } from "./ui-icon";
 
-export type ProductArea = "assistant" | "knowledge-qa" | "knowledge-admin" | "approvals" | "execution-logs" | "evaluation-datasets" | "bad-cases" | "workspace";
+export type ProductArea = "assistant" | "knowledge-qa" | "knowledge-admin" | "agent-tool-admin" | "approvals" | "execution-logs" | "evaluation-datasets" | "bad-cases" | "workspace";
 
 type Props = {
   workspaces: WorkspaceListItem[]; selectedId: string | null; currentUser: CurrentUser;
@@ -19,7 +19,7 @@ type Props = {
 const groups: { label: string; admin?: boolean; knowledge?: boolean; items: { area: ProductArea; label: string; icon: IconName }[] }[] = [
   { label: "日常使用", items: [{ area: "assistant", label: "智能助手", icon: "sparkles" }, { area: "knowledge-qa", label: "知识问答", icon: "book" }, { area: "approvals", label: "审批中心", icon: "shield" }] },
   { label: "知识维护", knowledge: true, items: [{ area: "knowledge-admin", label: "知识管理", icon: "book" }] },
-  { label: "运营管理", admin: true, items: [{ area: "execution-logs", label: "执行日志", icon: "list" }, { area: "evaluation-datasets", label: "评测数据集", icon: "layers" }, { area: "bad-cases", label: "问题案例", icon: "list" }] },
+  { label: "运营管理", admin: true, items: [{ area: "agent-tool-admin", label: "Agent 与工具", icon: "sparkles" }, { area: "execution-logs", label: "执行日志", icon: "list" }, { area: "evaluation-datasets", label: "评测数据集", icon: "layers" }, { area: "bad-cases", label: "问题案例", icon: "list" }] },
   { label: "工作空间", items: [{ area: "workspace", label: "空间与成员", icon: "users" }] },
 ];
 

@@ -1,0 +1,32 @@
+[
+  {
+    "tool_key": "get_reimbursement_status",
+    "label": "查询本人报销状态",
+    "operation_type": "read_only",
+    "risk_level": "low",
+    "restrictions": ["本地 Mock，仅查询登录员工本人的报销状态。", "无需参数；身份由后端确定，不能传入他人或报销单 ID。"],
+    "arguments": {}
+  },
+  {
+    "tool_key": "get_employee_information",
+    "label": "查询本人资料",
+    "operation_type": "read_only",
+    "risk_level": "low",
+    "restrictions": ["本地 Mock，仅查询登录员工本人的资料。", "subject 固定为 self，拒绝查询他人。"],
+    "arguments": {"subject": {"const": "self"}}
+  },
+  {
+    "tool_key": "create_it_access_request",
+    "label": "提交 IT 权限申请",
+    "operation_type": "write_sensitive",
+    "risk_level": "high",
+    "restrictions": ["仅创建待审批申请，不授予真实权限。合格审批后才执行一次本地 Mock 写入。", "system：production_database / analytics_warehouse / source_control。", "access_level：read_only / standard；生产数据库仅允许 read_only。", "business_justification：去除首尾空白后 10–500 字符，不允许控制字符。", "duration_days：整数 1–90。", "审批人须为同工作空间的系统管理员，申请人不能自批；有效期 72 小时。"],
+    "arguments": {
+      "system": {"enum": ["production_database", "analytics_warehouse", "source_control"]},
+      "access_level": {"enum": ["read_only", "standard"]},
+      "business_justification": {"minLength": 10, "maxLength": 500},
+      "duration_days": {"type": "integer", "minimum": 1, "maximum": 90}
+    },
+    "approval": {"reviewer_roles": ["system_admin"], "self_approval_allowed": false, "ttl_hours": 72}
+  }
+]

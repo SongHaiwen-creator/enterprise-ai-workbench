@@ -225,8 +225,8 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
 Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
 Feature 016 Evaluation Run & Metrics merged/delivered in PR #37 on 2026-10-03;
-Feature 017 Chinese UI Refresh is being implemented as a user-prioritized
-presentation update before Bad Case Management)
+Features 017-019 merged/delivered; Feature 020 Agent & Tool Administration UI
+is implemented and verified; PR #49 awaits human review and merge)
 
 Goal:
 
@@ -289,9 +289,8 @@ Issue #39, branch `feat/chinese-ui-refresh`. Public Chinese product introduction
 at `/`, existing platform at `/app` with Assistant as the default, shared blue
 and white styling, grouped navigation and mobile drawer. Existing Feature 016
 run/metrics UI is included. No new product capabilities, migrations or
-permission-policy changes; Bad Case Management remains the next unfinished
-product capability. Required verification passed; PR #41 is ready for human
-review. Delivery awaits human merge.
+permission-policy changes. Required verification passed; PR #41 was human-merged
+on 2026-10-04 and Issue #39 is closed.
 
 ### Bad Case Management
 
@@ -313,14 +312,15 @@ Feature 023 in planning PR #40, which is not yet merged.
 - Record possible causes
 - Compare versions
 
-### Knowledge Administration UI (Feature 019 - awaiting human merge)
+### Knowledge Administration UI (Feature 019 - merged/delivered)
 
 The user selected Feature 019 as the next feature after delivered Feature 018
 and the supporting business evaluation baseline. Its specification is
 `docs/features/019-knowledge-admin-ui.md`, tracked in Issue #46 on branch
 `feat/knowledge-admin-ui`. The user approved proposal `1c61fca` with
-"approve，实施"; Phase B is implemented and verified in PR #47, awaiting
-human merge. Evidence: `docs/features/019-knowledge-admin-ui-verification.md`.
+"approve，实施"; Phase B is implemented and verified in PR #47, human-merged
+on 2026-10-10; Issue #46 is closed.
+Evidence: `docs/features/019-knowledge-admin-ui-verification.md`.
 The scope follows the Knowledge Administration UI entry in planning PR #40,
 which remains unmerged, and reuses merged Features 006-010 on latest `main`.
 
@@ -329,8 +329,29 @@ metadata and status, upload and inspect Documents, explicitly index/re-index,
 and disable/re-enable Documents through existing APIs. No new backend contract,
 migration, authorization policy or dependency was added. Parsing readiness
 and indexing success must remain distinct; Document version/replacement work
-is deferred to proposed Feature 021. This feature is not yet merged/delivered
-and does not approve the full remaining MVP plan.
+is deferred to proposed Feature 021. Delivery of this feature does not approve
+the full remaining MVP plan.
+
+### Agent & Tool Administration UI (Feature 020 - awaiting human merge)
+
+The user selected Feature 020 after Feature 019's human merge, requested
+specification first, and then approved proposal `6cc4278` with "approve".
+The specification is `docs/features/020-agent-tool-admin-ui.md` on branch
+`feat/agent-tool-admin-ui`, tracked in Issue #48 and PR #49.
+Implementation, full backend/frontend checks and browser acceptance
+are recorded in `docs/features/020-agent-tool-admin-ui-verification.md`.
+The user separately authorized the dedicated PostgreSQL test-schema verification;
+all required checks passed. PR #49 is ready for human review but not yet delivered.
+It follows the Feature 020 entry in still-open planning PR #40 at `77acb1a`,
+without adopting that unmerged plan as the delivered baseline.
+
+Scope: Chinese Agent create/edit/status UI, three registered Mock Tool
+configurations, assignment/unassignment, and read-only capability restrictions.
+Only current-Workspace Agent/System administrators manage configurations;
+employees retain the existing active-Agent use path. It reuses Features 011-013
+and the current navigation without new APIs, migrations, execution permissions,
+approval policies or dependencies. Configuration versions remain Feature 022;
+no subsequent roadmap feature starts in this thread.
 
 ### Supporting business evaluation baseline
 

@@ -293,6 +293,19 @@ fieldset { min-width: 0; }
 
 .bad-cases { min-width: 0; }
 .knowledge-admin { min-width: 0; }
+.agent-admin-detail { min-width: 0; }
+.agent-tool-admin .knowledge-library button[aria-pressed="true"] { background: var(--soft); border-color: var(--primary); }
+.admin-tabs { margin-bottom: 24px; }
+.agent-tool-admin .admin-tabs button[aria-pressed="true"] { background: var(--primary); color: white; border-color: var(--primary); }
+.agent-tool-admin select { min-width: 0; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.capability-help { padding: 20px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 20px; }
+.capability-help li { margin-bottom: 8px; }
+.capability-help code { overflow-wrap: anywhere; }
+.agent-assignments { margin-top: 24px; }
+.agent-assignments > ul { list-style: none; padding: 0; }
+.agent-tool-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.agent-tool-row p { margin: 8px 0; }
+.agent-tool-row button { flex-shrink: 0; }
 .knowledge-intro { color: var(--muted); margin: 0 0 24px; }
 .knowledge-admin-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); align-items: start; gap: 24px; }
 .knowledge-main { display: grid; gap: 24px; min-width: 0; }
