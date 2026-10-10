@@ -11,7 +11,7 @@ const ENUM_LABELS: Record<string, string> = {
   same_workspace: "当前工作空间", other_workspace: "其他工作空间", nonexistent: "不存在的空间", forbidden: "无访问权限", not_found: "资源不存在",
   agent_route: "助手请求", knowledge_answer: "知识回答", agent_configuration_read: "读取智能体配置", tool_configuration_read: "读取工具配置", evaluation_dataset_read: "读取评测数据集",
   unsupported_request: "超出能力范围", knowledge_unsupported: "知识依据不足", approval_decision: "审批决定", approval_cancel: "取消申请", approve: "批准", reject: "拒绝",
-  read_only: "只读", standard: "标准访问", admin: "管理员访问", crm: "客户管理系统", erp: "企业资源系统", analytics: "分析系统", jira: "项目协作系统", gitlab: "代码管理系统",
+  read_only: "只读", write_sensitive: "敏感写入", standard: "标准访问", admin: "管理员访问", crm: "客户管理系统", erp: "企业资源系统", analytics: "分析系统", jira: "项目协作系统", gitlab: "代码管理系统",
   routing_match_rate: "请求类型匹配率", tool_selection_match_rate: "工具选择匹配率", tool_outcome_match_rate: "工具结果匹配率", permission_boundary_pass_rate: "权限边界通过率", refusal_behavior_pass_rate: "拒绝行为通过率", citation_requirement_compliance: "引用要求符合率",
   routing_intent: "请求类型", answer_status: "回答状态", citation_requirement: "引用要求", tool_key: "工具标识", outcome: "处理结果", non_execution_reason: "未执行原因", actor_role: "测试角色", actor_membership_status: "测试成员状态", target_context: "目标空间", operation: "操作", expected_http_status: "预期 HTTP 状态", result_category: "结果类型",  response_category: "响应类型", safe_response_required: "要求安全响应",
   provider_error: "模型服务错误", provider_unavailable: "模型服务不可用", generation_failed: "回答生成失败", configuration_error: "配置错误", configuration_changed: "配置已变化", timeout: "请求超时", budget_exhausted: "运行时限已耗尽", permission_denied: "访问已拒绝", internal_error: "内部错误", run_deadline_exceeded: "运行时限已耗尽", run_failed: "运行失败", case_error: "用例错误",

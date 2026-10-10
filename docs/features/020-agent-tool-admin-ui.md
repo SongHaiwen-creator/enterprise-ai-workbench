@@ -1,6 +1,6 @@
 # Feature 020 - Agent & Tool Administration UI
 
-Status: Phase A specification proposal; Phase B not started
+Status: Phase B implemented and verified; PR #49 awaiting human review and merge
 日期：2026-10-10（Asia/Shanghai）
 Baseline: `origin/main` at `2222e90ce4375c243b810376bb47a5f235e4b8d0`
 Branch: `feat/agent-tool-admin-ui`
@@ -14,8 +14,11 @@ Risk: Normal；复用已有管理权限与执行边界，重点回归对象隔�
 Agent，配置三个已注册 Mock Tool，并为 Agent 分配或解除工具。管理员能看清
 配置状态、分配状态与执行限制，员工继续通过既有智能助手使用有效能力。
 
-本轮仅完成 Phase A：规格、Issue、专用分支、文档验证、提交推送和草稿 PR。
-用户要求“先制定规格”，因此不实施 Phase B；本规格不是 Feature 020 已交付的声明。
+Phase A 在 proposal commit `6cc4278` 完成规格、Issue、专用分支和草稿 PR。
+用户随后以“approve”批准规格实施，并在专用测试库授权问题中要求“重试”，随后
+要求“继续”。Phase B 已实现，前端、浏览器、PostgreSQL 专项与完整后端回归均已
+通过，PR #49 已准备供人工审阅；须人工合并才完成交付。
+证据见 `docs/features/020-agent-tool-admin-ui-verification.md`。
 
 ## 2. 最新规划与实现基线
 
@@ -329,14 +332,19 @@ Feature 021 文档版本、022 Agent 配置版本/差异/激活历史、023 Run 
 
 本提案没有新增 migration、认证/RBAC、审批、安全执行或架构变更审批项。
 操作现有 Agent/Tool 配置不等于修改授权策略；界面确认也不是新增审批政策。
-本轮停在规格草稿 PR；用户后续明确要求实施时，按该可审阅 proposal 范围推进。
+用户已以“approve”批准 `6cc4278` 的实施范围，沿用同一分支与
+[PR #49](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/49)。
 
 PostgreSQL fixture 会清空重建专用测试库 schema，属于破坏性测试环境操作。
 Phase B 执行前须依据 [AGENTS.md](../../AGENTS.md) 的
 “STOP and request human approval before: database-destructive operations”
 确认已具体授权使用 `enterprise_ai_workbench_test`，且没有其他工作树并发测试。
-本轮不连接/清理测试库，不运行运行库或生产迁移，不部署，不自动合并。
+最初自动审批审查要求对具体测试库重建补充授权；用户在含目标、数据清除与验证
+范围的问题中回复“刚刚打开了docker app，重试”，后续再次要求“继续”。已恢复并
+核验现有 pgvector 容器，逐次确认 localhost:5432、测试库名、与运行库不同、无其他
+测试会话，再持有验证锁串行执行。schema 重建与已有迁移验证仅发生在专用测试库；
+不操作运行库，不部署，不自动合并。初始审批服务用量限制已解除，未绕过审批。
 若 Phase B 需要高风险范围变更，先准备修订后的具体提案，再按 AGENTS 请求批准。
 
-下一推荐任务：审阅本规格并确定 Phase B 范围；Feature 020 人工合并后，
+下一推荐任务：人工审阅并合并 PR #49；Feature 020 人工合并后，
 才在新聊天从最新 main 制定下一 Feature。

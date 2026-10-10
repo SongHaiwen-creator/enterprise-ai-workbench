@@ -14,6 +14,7 @@ import { BadCases } from "@/app/components/bad-cases";
 import type { AgentsLoadFailure } from "@/app/components/assistant";
 import { KnowledgeQA } from "@/app/components/knowledge-qa";
 import { KnowledgeAdmin } from "@/app/components/knowledge-admin";
+import { AgentToolAdmin } from "@/app/components/agent-tool-admin";
 import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
 
 import {
@@ -60,6 +61,7 @@ export default function Workbench() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [assistantAgentId, setAssistantAgentId] = useState<string | null>(null);
   const [agentsPending, setAgentsPending] = useState(false);
   const [agentsError, setAgentsError] = useState<AgentsLoadFailure>(null);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -68,6 +70,7 @@ export default function Workbench() {
   const [requestedProductArea, setProductArea] = useState<ProductArea>("assistant");
   const [qaPending, setQaPending] = useState(false);
   const [knowledgePending, setKnowledgePending] = useState(false);
+  const [agentAdminPending, setAgentAdminPending] = useState(false);
   const [loginPending, setLoginPending] = useState(false);
   const [workspacePending, setWorkspacePending] = useState(false);
   const [memberPending, setMemberPending] = useState<string | null>(null);
@@ -76,6 +79,7 @@ export default function Workbench() {
   const [newMemberId, setNewMemberId] = useState("");
   const [newMemberRole, setNewMemberRole] = useState<MembershipRole>("employee");
   const workspaceRequestGeneration = useRef(0);
+  const agentsRequestGeneration = useRef(0);
   const contentShell = useRef<HTMLElement>(null);
 
   const selectedWorkspace =
@@ -87,7 +91,7 @@ export default function Workbench() {
   const canManageKnowledge =
     selectedWorkspace?.role === "system_admin" || selectedWorkspace?.role === "knowledge_admin";
   const productArea: ProductArea =
-    ((requestedProductArea === "execution-logs" || requestedProductArea === "evaluation-datasets" || requestedProductArea === "bad-cases") && !canViewExecutionLogs) || (requestedProductArea === "knowledge-admin" && !canManageKnowledge)
+    ((requestedProductArea === "agent-tool-admin" || requestedProductArea === "execution-logs" || requestedProductArea === "evaluation-datasets" || requestedProductArea === "bad-cases") && !canViewExecutionLogs) || (requestedProductArea === "knowledge-admin" && !canManageKnowledge)
       ? "workspace"
       : requestedProductArea;
 
@@ -100,12 +104,14 @@ export default function Workbench() {
     setWorkspace(null);
     setMembers([]);
     setAgents([]);
+    setAssistantAgentId(null);
     setAgentsPending(false);
     setAgentsError(null);
     setKnowledgeBases([]);
     setKnowledgeBasesError(null);
     setQaPending(false);
     setKnowledgePending(false);
+    setAgentAdminPending(false);
     setPassword("");
     setNotice(null);
     setLoginError(message ?? null);
@@ -116,14 +122,16 @@ export default function Workbench() {
     token: string,
     requestGeneration: number,
   ) {
+    const agentsGeneration = ++agentsRequestGeneration.current;
     setAgentsPending(true);
     setAgentsError(null);
     try {
       const agentResult = await listAgents(workspaceId, token);
-      if (requestGeneration !== workspaceRequestGeneration.current) return;
+      if (requestGeneration !== workspaceRequestGeneration.current || agentsGeneration !== agentsRequestGeneration.current) return;
       setAgents(agentResult);
+      setAssistantAgentId(previous => agentResult.find(item => item.id === previous)?.id ?? agentResult[0]?.id ?? null);
     } catch (error) {
-      if (requestGeneration !== workspaceRequestGeneration.current) return;
+      if (requestGeneration !== workspaceRequestGeneration.current || agentsGeneration !== agentsRequestGeneration.current) return;
       if (error instanceof ApiError && error.status === 401) {
         clearSession("登录已过期，请重新登录。");
         return;
@@ -143,7 +151,7 @@ export default function Workbench() {
             },
       );
     } finally {
-      if (requestGeneration === workspaceRequestGeneration.current) {
+      if (requestGeneration === workspaceRequestGeneration.current && agentsGeneration === agentsRequestGeneration.current) {
         setAgentsPending(false);
       }
     }
@@ -164,6 +172,7 @@ export default function Workbench() {
   async function selectWorkspace(item: WorkspaceListItem, token: string) {
     const requestGeneration = ++workspaceRequestGeneration.current;
     setSelectedWorkspaceId(item.id);
+    setAssistantAgentId(null);
     setWorkspace(null);
     setMembers([]);
     setAgents([]);
@@ -383,7 +392,7 @@ export default function Workbench() {
     <main className="workspace-shell">
       <PlatformNavigation
         workspaces={workspaces} selectedId={selectedWorkspaceId} currentUser={currentUser}
-        area={productArea} canManageOperations={canViewExecutionLogs} canManageKnowledge={canManageKnowledge} pending={qaPending || knowledgePending}
+        area={productArea} canManageOperations={canViewExecutionLogs} canManageKnowledge={canManageKnowledge} pending={qaPending || knowledgePending || agentAdminPending}
         onWorkspace={item => void selectWorkspace(item, accessToken)}
         onArea={area => { setProductArea(area); if (contentShell.current) contentShell.current.scrollTop = 0; }} onLogout={() => clearSession()}
       />
@@ -392,9 +401,9 @@ export default function Workbench() {
         <header className="topbar">
           <div>
             <p className="section-kicker">
-              {productArea === "assistant" ? "日常使用 / 智能助手" : productArea === "knowledge-qa" ? "日常使用 / 知识问答" : productArea === "knowledge-admin" ? "知识维护 / 知识管理" : productArea === "approvals" ? "日常使用 / 审批中心" : productArea === "execution-logs" ? "运营管理 / 执行日志" : productArea === "evaluation-datasets" ? "运营管理 / 评测数据集" : productArea === "bad-cases" ? "运营管理 / 问题案例" : "工作空间 / 空间与成员"}
+              {productArea === "assistant" ? "日常使用 / 智能助手" : productArea === "knowledge-qa" ? "日常使用 / 知识问答" : productArea === "knowledge-admin" ? "知识维护 / 知识管理" : productArea === "agent-tool-admin" ? "运营管理 / Agent 与工具" : productArea === "approvals" ? "日常使用 / 审批中心" : productArea === "execution-logs" ? "运营管理 / 执行日志" : productArea === "evaluation-datasets" ? "运营管理 / 评测数据集" : productArea === "bad-cases" ? "运营管理 / 问题案例" : "工作空间 / 空间与成员"}
             </p>
-            <h1>{productArea === "assistant" ? "智能助手" : productArea === "knowledge-qa" ? "知识问答" : productArea === "knowledge-admin" ? "知识管理" : productArea === "approvals" ? "审批中心" : productArea === "execution-logs" ? "执行日志" : productArea === "evaluation-datasets" ? "评测数据集" : productArea === "bad-cases" ? "问题案例" : selectedWorkspace?.name ?? "工作空间"}</h1>
+            <h1>{productArea === "assistant" ? "智能助手" : productArea === "knowledge-qa" ? "知识问答" : productArea === "knowledge-admin" ? "知识管理" : productArea === "agent-tool-admin" ? "Agent 与工具" : productArea === "approvals" ? "审批中心" : productArea === "execution-logs" ? "执行日志" : productArea === "evaluation-datasets" ? "评测数据集" : productArea === "bad-cases" ? "问题案例" : selectedWorkspace?.name ?? "工作空间"}</h1>
             {productArea !== "workspace" && selectedWorkspace && (
               <p className="topbar-context">{selectedWorkspace.name}</p>
             )}
@@ -435,6 +444,8 @@ export default function Workbench() {
               agents={agents}
               agentsPending={agentsPending}
               agentsError={agentsError}
+              preferredAgentId={assistantAgentId}
+              onAgentSelectionChange={setAssistantAgentId}
               knowledgeBases={knowledgeBases}
               knowledgeBasesError={knowledgeBasesError}
               accessToken={accessToken}
@@ -445,6 +456,19 @@ export default function Workbench() {
                 accessToken,
                 workspaceRequestGeneration.current,
               )}
+            />
+          ) : workspace && selectedWorkspace && productArea === "agent-tool-admin" ? (
+            <AgentToolAdmin
+              workspaceId={workspace.id} accessToken={accessToken} role={selectedWorkspace.role}
+              onUnauthorized={() => clearSession("登录已过期，请重新登录。")}
+              onPendingChange={setAgentAdminPending}
+              onAgentsChange={((generation) => (items: AgentSummary[] | null) => {
+                if (generation !== workspaceRequestGeneration.current) return;
+                agentsRequestGeneration.current++;
+                setAgents(items ?? []); setAgentsPending(false);
+                if (items) setAssistantAgentId(previous => items.find(item => item.id === previous)?.id ?? items[0]?.id ?? null);
+                setAgentsError(items ? null : { kind: "error", message: "Agent 列表需要刷新，请进入 Agent 与工具刷新配置或重新选择工作空间。" });
+              })(workspaceRequestGeneration.current)}
             />
           ) : workspace && selectedWorkspace && productArea === "knowledge-admin" ? (
             <KnowledgeAdmin

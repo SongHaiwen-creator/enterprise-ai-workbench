@@ -40,6 +40,8 @@ interface AssistantProps {
   onUnauthorized: () => void;
   onPendingChange: (pending: boolean) => void;
   onRetryAgents: () => void;
+  preferredAgentId?: string | null;
+  onAgentSelectionChange?: (id: string) => void;
 }
 
 export function Assistant({
@@ -54,11 +56,13 @@ export function Assistant({
   onUnauthorized,
   onPendingChange,
   onRetryAgents,
+  preferredAgentId,
+  onAgentSelectionChange,
 }: AssistantProps) {
   const activeAgents = agents.filter((agent) => agent.status === "active");
   const activeKnowledgeBases = knowledgeBases.filter((base) => base.status === "active");
   const [selectedAgentId, setSelectedAgentId] = useState(
-    activeAgents[0]?.id ?? "",
+    preferredAgentId ?? activeAgents[0]?.id ?? "",
   );
   const [selectedKnowledgeBaseId, setSelectedKnowledgeBaseId] = useState(
     activeKnowledgeBases[0]?.id ?? "",
@@ -221,6 +225,7 @@ export function Assistant({
                   value={selectedAgent.id}
                   onChange={(event) => {
                     setSelectedAgentId(event.target.value);
+                    onAgentSelectionChange?.(event.target.value);
                     resetResult();
                   }}
                   disabled={isPending}

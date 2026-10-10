@@ -226,7 +226,7 @@ Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
 Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
 Feature 016 Evaluation Run & Metrics merged/delivered in PR #37 on 2026-10-03;
 Features 017-019 merged/delivered; Feature 020 Agent & Tool Administration UI
-is in Phase A specification planning, with no implementation started)
+is implemented and verified; PR #49 awaits human review and merge)
 
 Goal:
 
@@ -332,12 +332,16 @@ and indexing success must remain distinct; Document version/replacement work
 is deferred to proposed Feature 021. Delivery of this feature does not approve
 the full remaining MVP plan.
 
-### Agent & Tool Administration UI (Feature 020 - Phase A proposal)
+### Agent & Tool Administration UI (Feature 020 - awaiting human merge)
 
-The user selected Feature 020 after Feature 019's human merge and requested
-specification first. The proposal is `docs/features/020-agent-tool-admin-ui.md`
-on branch `feat/agent-tool-admin-ui`, tracked in Issue #48;
-implementation has not started.
+The user selected Feature 020 after Feature 019's human merge, requested
+specification first, and then approved proposal `6cc4278` with "approve".
+The specification is `docs/features/020-agent-tool-admin-ui.md` on branch
+`feat/agent-tool-admin-ui`, tracked in Issue #48 and PR #49.
+Implementation, full backend/frontend checks and browser acceptance
+are recorded in `docs/features/020-agent-tool-admin-ui-verification.md`.
+The user separately authorized the dedicated PostgreSQL test-schema verification;
+all required checks passed. PR #49 is ready for human review but not yet delivered.
 It follows the Feature 020 entry in still-open planning PR #40 at `77acb1a`,
 without adopting that unmerged plan as the delivered baseline.
 
