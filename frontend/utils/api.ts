@@ -363,7 +363,12 @@ export async function requestJson<T>(
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
-  if (init.body !== undefined) headers.set("Content-Type", "application/json");
+  if (init.body instanceof FormData) {
+    // The browser owns the multipart boundary; retain the existing JSON path.
+    headers.delete("Content-Type");
+  } else if (init.body !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
 
   let response: Response;

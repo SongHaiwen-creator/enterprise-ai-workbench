@@ -13,6 +13,7 @@ import { EvaluationDatasets } from "@/app/components/evaluation-datasets";
 import { BadCases } from "@/app/components/bad-cases";
 import type { AgentsLoadFailure } from "@/app/components/assistant";
 import { KnowledgeQA } from "@/app/components/knowledge-qa";
+import { KnowledgeAdmin } from "@/app/components/knowledge-admin";
 import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
 
 import {
@@ -66,6 +67,7 @@ export default function Workbench() {
     useState<KnowledgeBasesLoadFailure>(null);
   const [requestedProductArea, setProductArea] = useState<ProductArea>("assistant");
   const [qaPending, setQaPending] = useState(false);
+  const [knowledgePending, setKnowledgePending] = useState(false);
   const [loginPending, setLoginPending] = useState(false);
   const [workspacePending, setWorkspacePending] = useState(false);
   const [memberPending, setMemberPending] = useState<string | null>(null);
@@ -82,8 +84,10 @@ export default function Workbench() {
   // Presentation only: the backend authorizes every execution log read.
   const canViewExecutionLogs =
     selectedWorkspace?.role === "system_admin" || selectedWorkspace?.role === "agent_admin";
+  const canManageKnowledge =
+    selectedWorkspace?.role === "system_admin" || selectedWorkspace?.role === "knowledge_admin";
   const productArea: ProductArea =
-    (requestedProductArea === "execution-logs" || requestedProductArea === "evaluation-datasets" || requestedProductArea === "bad-cases") && !canViewExecutionLogs
+    ((requestedProductArea === "execution-logs" || requestedProductArea === "evaluation-datasets" || requestedProductArea === "bad-cases") && !canViewExecutionLogs) || (requestedProductArea === "knowledge-admin" && !canManageKnowledge)
       ? "workspace"
       : requestedProductArea;
 
@@ -101,6 +105,7 @@ export default function Workbench() {
     setKnowledgeBases([]);
     setKnowledgeBasesError(null);
     setQaPending(false);
+    setKnowledgePending(false);
     setPassword("");
     setNotice(null);
     setLoginError(message ?? null);
@@ -378,7 +383,7 @@ export default function Workbench() {
     <main className="workspace-shell">
       <PlatformNavigation
         workspaces={workspaces} selectedId={selectedWorkspaceId} currentUser={currentUser}
-        area={productArea} canManageOperations={canViewExecutionLogs} pending={qaPending}
+        area={productArea} canManageOperations={canViewExecutionLogs} canManageKnowledge={canManageKnowledge} pending={qaPending || knowledgePending}
         onWorkspace={item => void selectWorkspace(item, accessToken)}
         onArea={area => { setProductArea(area); if (contentShell.current) contentShell.current.scrollTop = 0; }} onLogout={() => clearSession()}
       />
@@ -387,9 +392,9 @@ export default function Workbench() {
         <header className="topbar">
           <div>
             <p className="section-kicker">
-              {productArea === "assistant" ? "日常使用 / 智能助手" : productArea === "knowledge-qa" ? "日常使用 / 知识问答" : productArea === "approvals" ? "日常使用 / 审批中心" : productArea === "execution-logs" ? "运营管理 / 执行日志" : productArea === "evaluation-datasets" ? "运营管理 / 评测数据集" : productArea === "bad-cases" ? "运营管理 / 问题案例" : "工作空间 / 空间与成员"}
+              {productArea === "assistant" ? "日常使用 / 智能助手" : productArea === "knowledge-qa" ? "日常使用 / 知识问答" : productArea === "knowledge-admin" ? "知识维护 / 知识管理" : productArea === "approvals" ? "日常使用 / 审批中心" : productArea === "execution-logs" ? "运营管理 / 执行日志" : productArea === "evaluation-datasets" ? "运营管理 / 评测数据集" : productArea === "bad-cases" ? "运营管理 / 问题案例" : "工作空间 / 空间与成员"}
             </p>
-            <h1>{productArea === "assistant" ? "智能助手" : productArea === "knowledge-qa" ? "知识问答" : productArea === "approvals" ? "审批中心" : productArea === "execution-logs" ? "执行日志" : productArea === "evaluation-datasets" ? "评测数据集" : productArea === "bad-cases" ? "问题案例" : selectedWorkspace?.name ?? "工作空间"}</h1>
+            <h1>{productArea === "assistant" ? "智能助手" : productArea === "knowledge-qa" ? "知识问答" : productArea === "knowledge-admin" ? "知识管理" : productArea === "approvals" ? "审批中心" : productArea === "execution-logs" ? "执行日志" : productArea === "evaluation-datasets" ? "评测数据集" : productArea === "bad-cases" ? "问题案例" : selectedWorkspace?.name ?? "工作空间"}</h1>
             {productArea !== "workspace" && selectedWorkspace && (
               <p className="topbar-context">{selectedWorkspace.name}</p>
             )}
@@ -440,6 +445,17 @@ export default function Workbench() {
                 accessToken,
                 workspaceRequestGeneration.current,
               )}
+            />
+          ) : workspace && selectedWorkspace && productArea === "knowledge-admin" ? (
+            <KnowledgeAdmin
+              workspaceId={workspace.id} accessToken={accessToken} role={selectedWorkspace.role}
+              onUnauthorized={() => clearSession("登录已过期，请重新登录。")}
+              onPendingChange={setKnowledgePending}
+              onBasesChange={((generation) => (items: KnowledgeBase[] | null) => {
+                if (generation !== workspaceRequestGeneration.current) return;
+                setKnowledgeBases(items ?? []);
+                setKnowledgeBasesError(items ? null : { kind: "error", message: "知识库列表需要刷新，请进入知识管理刷新或重新选择工作空间。" });
+              })(workspaceRequestGeneration.current)}
             />
           ) : workspace && selectedWorkspace && productArea === "knowledge-qa" ? (
             <KnowledgeQA

@@ -292,6 +292,33 @@ fieldset { min-width: 0; }
 @media (prefers-reduced-motion: reduce) { *,*::before,*::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
 
 .bad-cases { min-width: 0; }
+.knowledge-admin { min-width: 0; }
+.knowledge-intro { color: var(--muted); margin: 0 0 24px; }
+.knowledge-admin-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); align-items: start; gap: 24px; }
+.knowledge-main { display: grid; gap: 24px; min-width: 0; }
+.knowledge-admin .qa-context-card { min-width: 0; }
+.knowledge-library ul, .knowledge-documents { list-style: none; padding: 0; margin: 20px 0 0; }
+.knowledge-library li + li, .knowledge-documents li + li { margin-top: 12px; }
+.knowledge-library li button { display: grid; gap: 6px; width: 100%; text-align: left; }
+.knowledge-library button[aria-current="true"] { background: var(--soft); border-color: var(--primary); }
+.knowledge-library li span, .knowledge-documents small { color: var(--muted); font-size: 12px; }
+.knowledge-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.knowledge-admin button:not(.primary-button) { min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--primary); }
+.knowledge-admin button:disabled { opacity: .55; cursor: not-allowed; }
+.knowledge-form { margin: 0 0 20px; }
+.knowledge-form fieldset { min-width: 0; display: grid; gap: 16px; padding: 20px; border: 1px solid var(--line); border-radius: 12px; }
+.knowledge-form label { display: grid; gap: 8px; }
+.knowledge-form input, .knowledge-form textarea { width: 100%; box-sizing: border-box; }
+.knowledge-form button { justify-self: start; }
+.knowledge-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.knowledge-heading h2 { margin: 0; }
+.knowledge-documents li { display: grid; gap: 8px; padding: 16px; border: 1px solid var(--line); border-radius: 10px; }
+.knowledge-documents button { justify-self: start; text-align: left; }
+.knowledge-document-detail, .knowledge-index-result { padding: 20px; margin-top: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--soft); }
+.knowledge-admin p, .knowledge-admin button, .knowledge-admin h2, .knowledge-admin h3, .knowledge-admin strong { overflow-wrap: anywhere; }
+.knowledge-confirmation { width: min(480px, calc(100% - 32px)); padding: 24px; border: 1px solid var(--line); border-radius: 16px; color: var(--ink); }
+.knowledge-confirmation::backdrop { background: rgb(15 23 42 / .4); }
+@media (max-width: 1000px) { .knowledge-admin-layout { grid-template-columns: 1fr; } }
 .bad-cases p, .bad-cases td, .bad-cases li { overflow-wrap: anywhere; }
 .bad-cases pre, [aria-label="登记评测问题"] pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; background: var(--soft); padding: 16px; border-radius: 10px; }
 .bad-cases fieldset, [aria-label="登记评测问题"] fieldset { min-width: 0; display: grid; gap: 16px; border: 1px solid var(--line); padding: 20px; border-radius: 12px; }

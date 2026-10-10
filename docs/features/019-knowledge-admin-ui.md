@@ -1,7 +1,7 @@
 # Feature 019 - Knowledge Administration UI
 
-Status: Phase A specification; implementation not started
-日期：2026-10-09（Asia/Shanghai）
+Status: Phase B implemented and verified; PR #47 awaiting human merge
+日期：2026-10-10（Asia/Shanghai）；Phase A 规格制定于 2026-10-09
 Baseline: `origin/main` at `56b699ad2cd36d40df4e642404108fc7555c89ec`
 Branch: `feat/knowledge-admin-ui`
 Issue: [#46](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/issues/46)
@@ -14,9 +14,10 @@ Risk: Normal；复用既有 API 和权限，重点回归文件上传、Provider 
 启停，以及文档上传、查看处理结果、显式索引/重新索引、启停。员工仍通过既有
 知识问答和智能助手使用知识；管理操作完全由现有后端执行。
 
-本轮只制定规格、建立 Issue、提交推送并准备规格 PR，不实施 Phase B。
-规格 PR 可供人工审阅，但不表示 Feature 019 已实现或交付；功能须实现、验证并
-由人工合并后才完成。不启动 Feature 020 或其他后续功能。
+Phase A 在 `1c61fca` 制定规格、建立 Issue 并准备规格草稿 PR。
+用户随后以“approve，实施”批准该规格，实施和验证结果记录于
+`docs/features/019-knowledge-admin-ui-verification.md`。
+实现通过验证仍须人工合并才完成交付。不启动 Feature 020 或其他后续功能。
 
 ## 2. 最新仓库规划与实现基线
 
@@ -285,10 +286,11 @@ AI 基础设施；现有依赖足够，不需引入上传组件库、状态库�
 4. `git diff --check`、契约/权限与范围自审，记录实际命令、通过数、跳过数和环境。
    任一必需验证无法运行，不报告实现 PR-ready。
 
-本轮 Phase A 只进行文档链接、契约一致性、格式与 diff 自审，不运行应用测试或
-数据库操作；上述测试是实现后的必需验证，不是本轮已通过的结果。
-PostgreSQL fixture 会 DROP/CREATE 专用测试库 schema，运行前需明确针对该库的
-测试重建授权、安全检查和排他占用；不可把运行库或其他工作树的数据库用于测试。
+历史 Phase A 只进行了文档链接、契约一致性、格式与 diff 自审，没有运行应用测试
+或数据库操作。随后批准的 Phase B 已完成以上必需验证，实际结果见验证记录。
+PostgreSQL fixture 会 DROP/CREATE 专用测试库 schema；本次批准包含规格内该项
+验证，执行前已核对 `enterprise_ai_workbench_test`、运行库不同及无其他测试会话。
+不可把运行库或其他工作树的数据库用于测试。
 
 ## 9. Out of Scope
 
@@ -308,13 +310,14 @@ Chunk ID。界面必须如实显示这些边界，不能用乐观状态或新增
 
 按 AGENTS，此方案属普通 UI 接入，不包含必须预先批准的迁移、认证、RBAC、
 安全策略或架构变更。已有授权检查的使用与回归不等于新增授权策略。
-本轮停止于 Phase A 是用户“先制定规格”的范围要求。
-后续实现仍须取得明确任务指令；专用测试库重建须明确纳入授权。
+初始停止于 Phase A 是用户“先制定规格”的范围要求。
+后续“approve，实施”授权了 `1c61fca` 范围的实现和规格中专用测试库验证。
 若出现高风险变更，先提交具体可审阅方案，再按 AGENTS 申请批准。
 独立审查对当前 normal-risk 范围可选；人工 merge 始终必需。
 
-Phase A 交付包含本规格、ROADMAP 中的提案入口、关联 Issue、专用分支和规格 PR。
-后续实现优先在同一分支/PR 更新状态，覆盖 Goal/Scope/AC/Test 要求并完成验证；
-如规格先单独合并，实施前从最新 main 核验并建立独立实现分支/PR，避免复用陈旧基线。
-任何路径都不得把规格合并记为功能交付。下一推荐任务为 Feature 019 Phase B，
-不是 Feature 020。
+Phase B 继续使用同一专用分支和
+[PR #47](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/47)，
+交付本规格、实现、67 项前端专项和验证记录；没有修改后端或迁移。
+完成 diff 自审、提交推送并更新 PR 后，AI 停于 PR-ready。
+下一推荐任务是人工审阅/合并 Feature 019；合并后在新聊天启动规划 Feature 020，
+重新核验当时的最新 main。本聊天不继续下一功能。
