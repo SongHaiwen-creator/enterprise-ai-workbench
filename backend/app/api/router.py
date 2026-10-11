@@ -5,6 +5,7 @@ from app.api.routes.answers import router as answers_router
 from app.api.routes.approvals import router as approvals_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.bad_cases import router as bad_cases_router
+from app.api.routes.document_families import router as document_families_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.evaluation import router as evaluation_router
 from app.api.routes.evaluation_runs import router as evaluation_runs_router
@@ -20,6 +21,7 @@ api_router.include_router(auth_router)
 api_router.include_router(workspaces_router)
 api_router.include_router(knowledge_bases_router)
 api_router.include_router(documents_router)
+api_router.include_router(document_families_router)
 api_router.include_router(retrieval_router)
 api_router.include_router(answers_router)
 api_router.include_router(agents_router)

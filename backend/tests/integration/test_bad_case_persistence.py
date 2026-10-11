@@ -12,8 +12,8 @@ from sqlalchemy import inspect, update
 from sqlalchemy.exc import DataError, IntegrityError
 
 from alembic import command
-from app.db.base import Base
 from app.models import BadCase, BadCaseHistory
+from tests.integration.document_factory import legacy_metadata
 from tests.integration.test_bad_case_api import register, seed
 
 pytest_plugins = ["tests.integration.test_evaluation_run_api"]
@@ -25,7 +25,7 @@ def test_0013_roundtrip_and_prior_schema(postgres_engine, database_urls):
     assert database_urls[1].database == "enterprise_ai_workbench_test"
     config = Config(str(BACKEND / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["0013"]
+    assert script.get_heads() == ["0014"]
     assert script.get_revision("0013").down_revision == "0012"
     with postgres_engine.connect() as connection:
         config.attributes["connection"] = connection
@@ -36,6 +36,7 @@ def test_0013_roundtrip_and_prior_schema(postgres_engine, database_urls):
                 for name in inspect(connection).get_table_names()
             }
             command.upgrade(config, "0013")
+            legacy = legacy_metadata(connection)
             inspector = inspect(connection)
             assert set(inspector.get_table_names()) - set(prior) == {
                 "bad_cases",
@@ -43,7 +44,7 @@ def test_0013_roundtrip_and_prior_schema(postgres_engine, database_urls):
             }
             for name, columns in prior.items():
                 assert repr(inspector.get_columns(name)) == columns
-            assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
+            assert compare_metadata(MigrationContext.configure(connection), legacy) == []
             for name in ("bad_cases", "bad_case_history"):
                 assert all(
                     fk["options"]["ondelete"] == "RESTRICT"
@@ -52,7 +53,7 @@ def test_0013_roundtrip_and_prior_schema(postgres_engine, database_urls):
             command.downgrade(config, "0012")
             assert set(inspect(connection).get_table_names()) == set(prior)
             command.upgrade(config, "0013")
-            assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
+            assert compare_metadata(MigrationContext.configure(connection), legacy) == []
         finally:
             connection.rollback()
             command.upgrade(config, "head")

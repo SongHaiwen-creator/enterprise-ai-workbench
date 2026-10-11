@@ -7,12 +7,12 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.models import Agent, AgentTool, Chunk, Document, KnowledgeBase, Tool
-from app.models.enums import DocumentStatus
 from app.schemas.agent_routing import ModelRoutingOutput
 from app.schemas.answer import ModelGenerationOutput
 from app.services.authorization_policy import POLICY_VERSION
 from app.services.exceptions import NotFoundError
 from app.services.generation import GROUNDING_INSTRUCTIONS
+from app.services.retrieval import effective_documents
 from app.services.routing import ROUTING_INSTRUCTIONS
 from app.services.tool_registry import TOOL_REGISTRY
 from app.services.tool_selection import TOOL_SELECTOR_INSTRUCTIONS
@@ -141,54 +141,90 @@ def configuration(session, workspace_id, agent_id, settings):
 
 
 def knowledge_context(session, workspace_id, kb_id, settings):
-    kb = scoped(session, KnowledgeBase, workspace_id, kb_id)
-    documents = session.execute(
-        select(Document.id, Document.version)
-        .where(
-            Document.workspace_id == workspace_id,
-            Document.knowledge_base_id == kb_id,
-            Document.status == DocumentStatus.READY,
+    # A single statement captures KB, current versions and their frozen chunks.
+    # READ COMMITTED cannot otherwise guarantee two successive SELECTs agree.
+    eligible = (
+        effective_documents(
+            workspace_id, kb_id, settings.embedding_model, settings.embedding_dimensions
         )
-        .order_by(Document.id)
-    ).all()
-    manifest = {"documents": [], "chunks": []}
-    size = 0
-    for document in documents:
-        entry = {"id": str(document.id), "version": document.version}
-        size += len(canonical(entry).encode("utf-8"))
-        if size > 1024 * 1024:
-            raise SnapshotTooLarge()
-        manifest["documents"].append(entry)
-    chunks = session.execute(
-        select(Chunk.id, Chunk.document_id, Chunk.content)
-        .join(
-            Document,
-            (Chunk.document_id == Document.id) & (Chunk.workspace_id == Document.workspace_id),
+        .with_only_columns(
+            Document.id,
+            Document.family_id,
+            Document.knowledge_base_id,
+            Document.version,
+            Document.content_sha256,
+            Document.indexed_model,
+            Document.indexed_dimensions,
+            Document.indexed_chunk_count,
+            Document.indexed_at,
         )
-        .where(
-            Chunk.workspace_id == workspace_id,
-            Document.workspace_id == workspace_id,
-            Document.knowledge_base_id == kb_id,
-            Document.status == DocumentStatus.READY,
-            Chunk.embedding_model == settings.embedding_model,
+        .subquery()
+    )
+    rows = session.execute(
+        select(
+            KnowledgeBase.id.label("kb_id"),
+            KnowledgeBase.name.label("kb_name"),
+            KnowledgeBase.status.label("kb_status"),
+            KnowledgeBase.updated_at.label("kb_updated"),
+            eligible,
+            Chunk.id.label("chunk_id"),
+            Chunk.document_id,
+            Chunk.content,
         )
-        .order_by(Chunk.id)
+        .select_from(KnowledgeBase)
+        .outerjoin(eligible, eligible.c.knowledge_base_id == KnowledgeBase.id)
+        .outerjoin(
+            Chunk,
+            (Chunk.document_id == eligible.c.id)
+            & (Chunk.workspace_id == workspace_id)
+            & (Chunk.embedding_model == settings.embedding_model),
+        )
+        .where(KnowledgeBase.id == kb_id, KnowledgeBase.workspace_id == workspace_id)
+        .order_by(eligible.c.id, Chunk.id)
         .execution_options(yield_per=100)
     )
-    for chunk in chunks:
-        entry = {
-            "id": str(chunk.id),
-            "document_id": str(chunk.document_id),
-            "content_sha256": digest(chunk.content),
-        }
-        size += len(canonical(entry).encode("utf-8"))
+    manifest, seen, size, kb = {"documents": [], "chunks": []}, set(), 0, None
+    for row in rows:
+        if kb is None:
+            kb = {
+                "id": str(row.kb_id),
+                "name": row.kb_name,
+                "status": row.kb_status,
+                "updated_at": row.kb_updated.isoformat(),
+            }
+        if row.id is not None and row.id not in seen:
+            seen.add(row.id)
+            entry = {
+                "id": str(row.id),
+                "family_id": str(row.family_id),
+                "version": row.version,
+                "content_sha256": row.content_sha256,
+                "index_sha256": digest(
+                    {
+                        "document_id": str(row.id),
+                        "model": row.indexed_model,
+                        "dimensions": row.indexed_dimensions,
+                        "count": row.indexed_chunk_count,
+                        "indexed_at": row.indexed_at.isoformat(),
+                    }
+                ),
+            }
+            size += len(canonical(entry).encode("utf-8"))
+            manifest["documents"].append(entry)
+        if row.chunk_id is not None:
+            entry = {
+                "id": str(row.chunk_id),
+                "document_id": str(row.document_id),
+                "content_sha256": digest(row.content),
+            }
+            size += len(canonical(entry).encode("utf-8"))
+            manifest["chunks"].append(entry)
         if size > 1024 * 1024:
             raise SnapshotTooLarge()
-        manifest["chunks"].append(entry)
-    return {
-        "knowledge_base": fields(kb, ("id", "name", "status", "updated_at")),
-        "corpus": manifest,
-    }
+    if kb is None:
+        raise NotFoundError("Evaluation reference not found")
+    # This versions the changed knowledge context, not the unchanged Run envelope.
+    return {"snapshot_version": 2, "knowledge_base": kb, "corpus": manifest}
 
 
 def permission_context(session, workspace_id, case):

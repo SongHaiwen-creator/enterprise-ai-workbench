@@ -161,6 +161,10 @@ def test_orm_response_models_read_attributes() -> None:
     )
     document = SimpleNamespace(
         id=uuid4(),
+        family_id=uuid4(),
+        is_current=True,
+        content_sha256="a" * 64,
+        indexing=None,
         workspace_id=workspace_id,
         knowledge_base_id=knowledge_base.id,
         file_name="employee-handbook.pdf",
@@ -178,4 +182,6 @@ def test_orm_response_models_read_attributes() -> None:
     assert KnowledgeBaseResponse.model_validate(knowledge_base).created_by == user_id
     response = DocumentResponse.model_validate(document)
     assert response.knowledge_base_id == knowledge_base.id
+    assert response.family_id == document.family_id and response.is_current
+    assert response.indexing is None
     assert "extracted_text" not in response.model_dump()

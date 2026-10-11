@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models import Chunk, Document, KnowledgeBase, Membership, User, Workspace
+from app.models import Chunk, Document, DocumentFamily, KnowledgeBase, Membership, User, Workspace
 from app.models.enums import (
     DocumentFileType,
     DocumentStatus,
@@ -15,6 +15,7 @@ from app.models.enums import (
     UserStatus,
     WorkspaceStatus,
 )
+from tests.integration.document_factory import make_document
 
 pytestmark = pytest.mark.integration
 
@@ -167,7 +168,8 @@ def test_successful_document_insert(db_session: Session) -> None:
     )
     db_session.add(knowledge_base)
     db_session.flush()
-    document = Document(
+    document = make_document(
+        db_session,
         workspace_id=workspace.id,
         knowledge_base_id=knowledge_base.id,
         file_name="handbook.md",
@@ -189,6 +191,7 @@ def test_successful_document_insert(db_session: Session) -> None:
 def test_document_foreign_keys_are_enforced(db_session: Session) -> None:
     db_session.add(
         Document(
+            family_id=uuid4(),
             workspace_id=uuid4(),
             knowledge_base_id=uuid4(),
             file_name="orphan.txt",
@@ -214,8 +217,17 @@ def test_document_workspace_must_match_knowledge_base(db_session: Session) -> No
     )
     db_session.add(knowledge_base)
     db_session.flush()
+    family = DocumentFamily(
+        workspace_id=workspace.id,
+        knowledge_base_id=knowledge_base.id,
+        display_name="policy.txt",
+        created_by=creator.id,
+    )
+    db_session.add(family)
+    db_session.flush()
     db_session.add(
         Document(
+            family_id=family.id,
             workspace_id=other_workspace.id,
             knowledge_base_id=knowledge_base.id,
             file_name="cross-workspace.txt",
@@ -253,7 +265,16 @@ def test_document_check_constraints_are_enforced(
     db_session.add(knowledge_base)
     db_session.flush()
 
+    family = DocumentFamily(
+        workspace_id=workspace.id,
+        knowledge_base_id=knowledge_base.id,
+        display_name="policy.txt",
+        created_by=creator.id,
+    )
+    db_session.add(family)
+    db_session.flush()
     values: dict[str, object] = {
+        "family_id": family.id,
         "workspace_id": workspace.id,
         "knowledge_base_id": knowledge_base.id,
         "file_name": "policy.txt",
@@ -267,8 +288,8 @@ def test_document_check_constraints_are_enforced(
         db_session.execute(
             text(
                 "INSERT INTO documents "
-                "(workspace_id, knowledge_base_id, file_name, file_type, status, "
-                "version, created_by) VALUES (:workspace_id, :knowledge_base_id, "
+                "(family_id, workspace_id, knowledge_base_id, file_name, file_type, status, "
+                "version, created_by) VALUES (:family_id, :workspace_id, :knowledge_base_id, "
                 ":file_name, :file_type, :status, :version, :created_by)"
             ),
             values,
@@ -287,7 +308,8 @@ def test_successful_chunk_insert(db_session: Session) -> None:
     )
     db_session.add(knowledge_base)
     db_session.flush()
-    document = Document(
+    document = make_document(
+        db_session,
         workspace_id=workspace.id,
         knowledge_base_id=knowledge_base.id,
         file_name="policy.txt",
@@ -337,7 +359,8 @@ def test_chunk_check_constraints_are_enforced(
     )
     db_session.add(knowledge_base)
     db_session.flush()
-    document = Document(
+    document = make_document(
+        db_session,
         workspace_id=workspace.id,
         knowledge_base_id=knowledge_base.id,
         file_name="policy.txt",
@@ -392,7 +415,8 @@ def test_chunk_workspace_must_match_parent_document(db_session: Session) -> None
     )
     db_session.add(knowledge_base)
     db_session.flush()
-    document = Document(
+    document = make_document(
+        db_session,
         workspace_id=workspace.id,
         knowledge_base_id=knowledge_base.id,
         file_name="policy.txt",

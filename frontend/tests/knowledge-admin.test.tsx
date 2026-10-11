@@ -4,21 +4,24 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { KnowledgeAdmin } from "@/app/components/knowledge-admin";
 import { ApiError, type KnowledgeBase, type MembershipRole, listKnowledgeBases } from "@/utils/api";
 import {
-  type KnowledgeDocument, createKnowledgeBase, getDocument, getKnowledgeBase, indexDocument,
-  listDocuments, updateDocumentStatus, updateKnowledgeBase, uploadDocument,
+  type KnowledgeDocument, type DocumentFamily, getDocumentFamily, listDocumentVersions, createKnowledgeBase, getDocument, getKnowledgeBase, indexDocument,
+  listDocumentFamilies, updateDocumentStatus, updateKnowledgeBase, uploadDocument,
 } from "@/utils/knowledge-admin";
 
 vi.mock("@/utils/api", async importOriginal => ({ ...await importOriginal<typeof import("@/utils/api")>(), listKnowledgeBases: vi.fn() }));
 vi.mock("@/utils/knowledge-admin", () => ({
+  getDocumentFamily: vi.fn(), listDocumentVersions: vi.fn(), uploadDocumentVersion: vi.fn(), activateDocumentVersion: vi.fn(),
   createKnowledgeBase: vi.fn(), getDocument: vi.fn(), getKnowledgeBase: vi.fn(), indexDocument: vi.fn(),
-  listDocuments: vi.fn(), updateDocumentStatus: vi.fn(), updateKnowledgeBase: vi.fn(), uploadDocument: vi.fn(),
+  listDocumentFamilies: vi.fn(), updateDocumentStatus: vi.fn(), updateKnowledgeBase: vi.fn(), uploadDocument: vi.fn(),
 }));
 const kb = (id = "kb-a", status: KnowledgeBase["status"] = "active"): KnowledgeBase => ({
   id, workspace_id: "w-a", name: id === "kb-a" ? "公司制度" : "其他制度", description: "原描述", status,
   created_by: "u", created_at: "2026-10-01T01:00:00Z", updated_at: "2026-10-01T01:00:00Z",
 });
-const doc = (status: KnowledgeDocument["status"] = "ready", id = "doc-a"): KnowledgeDocument => ({
+const doc = (status: KnowledgeDocument["status"] = "ready", id = "doc-a"): KnowledgeDocument & DocumentFamily => ({
   id, workspace_id: "w-a", knowledge_base_id: "kb-a", file_name: `${id}.md`, file_type: "md", status,
+  family_id: id, is_current: true, content_sha256: "a".repeat(64), indexing: null,
+  display_name: `${id}.md`, current_document_id: id, revision: 3,
   version: 1, processing_error: status === "failed" ? "No extractable text" : null,
   created_by: "u", created_at: kb().created_at, updated_at: kb().updated_at,
 });
@@ -60,7 +63,9 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(listKnowledgeBases).mockResolvedValue([kb()]);
   vi.mocked(getKnowledgeBase).mockImplementation(async (_w, id) => kb(id));
-  vi.mocked(listDocuments).mockResolvedValue([doc()]);
+  vi.mocked(listDocumentFamilies).mockResolvedValue([doc()]);
+  vi.mocked(getDocumentFamily).mockImplementation(async (_w, _k, id) => doc("ready", id));
+  vi.mocked(listDocumentVersions).mockImplementation(async (_w, _k, id) => [doc("ready", id)]);
   vi.mocked(getDocument).mockImplementation(async (_w, _k, id) => doc("ready", id));
   vi.mocked(indexDocument).mockResolvedValue({ document_id: "doc-a", chunk_count: 3, embedding_model: "text-embedding-3-small", embedding_dimensions: 1536, indexed_at: kb().created_at });
   // jsdom does not implement the browser's modal focus/visibility behavior.
@@ -80,7 +85,7 @@ describe("Knowledge administration", () => {
     render(<KnowledgeAdmin {...props} role={role} />);
     const user = userEvent.setup(); await screen.findByRole("button", { name: "doc-a.md" });
     await openReady(user);
-    expect(screen.getByText(/当前索引状态未提供/)).toBeInTheDocument();
+    expect(screen.getByText(/尚未成功索引/)).toBeInTheDocument();
     expect(screen.queryByText("已索引")).not.toBeInTheDocument();
     expect(indexDocument).not.toHaveBeenCalled();
   });
@@ -136,11 +141,11 @@ describe("Knowledge administration", () => {
     vi.mocked(getKnowledgeBase).mockResolvedValue(kb("kb-a", "disabled"));
     const { user } = await mount(); await openReady(user);
     expect(screen.getByLabelText("选择文档")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "索引 / 重新索引" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "生成索引" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "禁用文档" })).toBeEnabled();
     vi.mocked(updateDocumentStatus).mockResolvedValue(doc("disabled"));
     await user.click(screen.getByRole("button", { name: "禁用文档" })); await confirm(user);
-    await screen.findByText("文档已禁用。");
+    await screen.findByText("文档已禁用，当前指针保留，不自动回退。");
     expect(updateDocumentStatus).toHaveBeenCalledWith("w-a", "kb-a", "doc-a", "disabled", "token");
   });
   it("enables a disabled base without automatically indexing", async () => {
@@ -155,7 +160,7 @@ describe("Knowledge administration", () => {
     vi.mocked(getDocument).mockResolvedValue(doc(status));
     const { user } = await mount(); await openReady(user);
     const detail = within(screen.getByRole("article", { name: "文档详情" }));
-    expect(detail.queryByRole("button", { name: "索引 / 重新索引" })).not.toBeInTheDocument();
+    expect(detail.queryByRole("button", { name: "生成索引" })).not.toBeInTheDocument();
     expect(detail.queryByRole("button", { name: "禁用文档" })).not.toBeInTheDocument();
     if (status === "disabled") {
       vi.mocked(updateDocumentStatus).mockResolvedValue(doc());
@@ -175,7 +180,7 @@ describe("Knowledge administration", () => {
   });
   it("keeps 201 failed visible with a separate-new-upload recovery", async () => {
     vi.mocked(uploadDocument).mockResolvedValue(doc("failed"));
-    vi.mocked(listDocuments).mockResolvedValue([doc("failed")]);
+    vi.mocked(listDocumentFamilies).mockResolvedValue([doc("failed")]);
     const { user } = await mount();
     await user.upload(screen.getByLabelText("选择文档"), new File(["bad"], "bad.pdf"));
     await user.click(screen.getByRole("button", { name: "上传并解析" }));
@@ -191,7 +196,7 @@ describe("Knowledge administration", () => {
   });
   it("only indexes after confirmation and forgets the successful operation on re-entry", async () => {
     const { user, unmount } = await mount(); await openReady(user);
-    await user.click(screen.getByRole("button", { name: "索引 / 重新索引" }));
+    await user.click(screen.getByRole("button", { name: "生成索引" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("OpenAI"); expect(indexDocument).not.toHaveBeenCalled();
     await confirm(user); await screen.findByText("本次索引结果");
     expect(screen.getByText(/3 个片段/)).toBeInTheDocument();
@@ -200,10 +205,10 @@ describe("Knowledge administration", () => {
   it.each([502, 503])("supports explicit indexing retry after %s without a status write", async status => {
     vi.mocked(indexDocument).mockRejectedValueOnce(new ApiError("Safe error", status));
     const { user } = await mount(); await openReady(user);
-    await user.click(screen.getByRole("button", { name: "索引 / 重新索引" })); await confirm(user);
+    await user.click(screen.getByRole("button", { name: "生成索引" })); await confirm(user);
     await screen.findByRole("alert");
     expect(indexDocument).toHaveBeenCalledTimes(1); expect(updateDocumentStatus).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: "索引 / 重新索引" })); await confirm(user);
+    await user.click(screen.getByRole("button", { name: "生成索引" })); await confirm(user);
     await screen.findByText("本次索引结果"); expect(indexDocument).toHaveBeenCalledTimes(2);
   });
   it.each([413, 415, 422, 0, 500])("keeps current file and input recoverable after upload error %s", async status => {
@@ -260,7 +265,7 @@ describe("Knowledge administration", () => {
   it("fences old KB document responses and late detail responses", async () => {
     vi.mocked(listKnowledgeBases).mockResolvedValue([kb(), kb("kb-b")]);
     const slow = deferred<KnowledgeDocument[]>();
-    vi.mocked(listDocuments).mockImplementation((_w, base) => base === "kb-a" ? slow.promise : Promise.resolve([doc("ready", "new-doc")]));
+    vi.mocked(listDocumentFamilies).mockImplementation((_w, base) => base === "kb-a" ? slow.promise : Promise.resolve([doc("ready", "new-doc")]));
     render(<KnowledgeAdmin {...props} />); const user = userEvent.setup();
     await screen.findByRole("button", { name: /其他制度 已启用/ });
     await user.click(screen.getByRole("button", { name: /其他制度 已启用/ }));
@@ -269,13 +274,13 @@ describe("Knowledge administration", () => {
     expect(screen.queryByText("old-secret.md")).not.toBeInTheDocument();
   });
   it("fences Workspace A -> B -> A reads and clears File/draft state", async () => {
-    const slow = deferred<KnowledgeDocument[]>(); vi.mocked(listDocuments).mockReturnValueOnce(slow.promise);
+    const slow = deferred<KnowledgeDocument[]>(); vi.mocked(listDocumentFamilies).mockReturnValueOnce(slow.promise);
     const view = render(<KnowledgeAdmin {...props} />);
-    await waitFor(() => expect(listDocuments).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(listDocumentFamilies).toHaveBeenCalledTimes(1));
     view.rerender(<KnowledgeAdmin {...props} workspaceId="w-b" />);
-    await waitFor(() => expect(listDocuments).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listDocumentFamilies).toHaveBeenCalledTimes(2));
     view.rerender(<KnowledgeAdmin {...props} />);
-    await waitFor(() => expect(listDocuments).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(listDocumentFamilies).toHaveBeenCalledTimes(3));
     await act(async () => slow.resolve([doc("ready", "stale-secret")]));
     expect(screen.queryByText("stale-secret.md")).not.toBeInTheDocument();
     expect(screen.getByLabelText("选择文档")).toHaveValue("");
@@ -287,10 +292,10 @@ describe("Knowledge administration", () => {
     await user.click(screen.getByRole("button", { name: "上传并解析" }));
     unmount(); onBasesChange.mockClear();
     await act(async () => pending.resolve(doc()));
-    expect(onBasesChange).not.toHaveBeenCalled(); expect(listDocuments).toHaveBeenCalledTimes(1);
+    expect(onBasesChange).not.toHaveBeenCalled(); expect(listDocumentFamilies).toHaveBeenCalledTimes(1);
   });
   it("discards an older detail response after selecting another document", async () => {
-    vi.mocked(listDocuments).mockResolvedValue([doc(), doc("ready", "doc-b")]);
+    vi.mocked(listDocumentFamilies).mockResolvedValue([doc(), doc("ready", "doc-b")]);
     const slow = deferred<KnowledgeDocument>();
     vi.mocked(getDocument).mockReturnValueOnce(slow.promise).mockResolvedValue(doc("disabled", "doc-b"));
     const { user } = await mount();
@@ -333,7 +338,7 @@ describe("Knowledge administration", () => {
   it("renders markup-like metadata as literal text", async () => {
     const marked = { ...kb(), name: "<script>alert(1)</script>", description: "<img src=x>" };
     vi.mocked(listKnowledgeBases).mockResolvedValue([marked]); vi.mocked(getKnowledgeBase).mockResolvedValue(marked);
-    vi.mocked(listDocuments).mockResolvedValue([{ ...doc(), file_name: "<img onerror=x>.md" }]);
+    vi.mocked(listDocumentFamilies).mockResolvedValue([{ ...doc(), display_name: "<img onerror=x>.md", file_name: "<img onerror=x>.md" }]);
     render(<KnowledgeAdmin {...props} />); await screen.findByRole("button", { name: "<img onerror=x>.md" });
     expect(document.querySelector(".knowledge-admin script, .knowledge-admin img")).toBeNull();
     expect(screen.getByLabelText("知识库描述")).toHaveValue("<img src=x>");

@@ -15,7 +15,6 @@ from app.models import (
     AgentTool,
     Approval,
     Chunk,
-    Document,
     EvaluationRun,
     ExecutionLog,
     KnowledgeBase,
@@ -38,6 +37,7 @@ from app.services.generation import GeneratedAnswer
 from app.services.routing import RoutingProviderError
 from app.services.tool_selection import ToolSelectionProposal
 from tests.evaluation_support import case_body
+from tests.integration.document_factory import make_document
 from tests.integration.test_knowledge_base_api import (
     add_membership,
     bearer,
@@ -318,7 +318,9 @@ def test_permission_is_local_and_wrong_denial_is_fail(client, scenario, db_sessi
 def test_real_read_only_rag_and_citation_presence(client, scenario, db_session, monkeypatch):
     s = scenario
     forbid_side_effects(monkeypatch)
-    doc = Document(
+    doc = make_document(
+        db_session,
+        indexed=True,
         workspace_id=s.workspace.id,
         knowledge_base_id=s.kb.id,
         created_by=s.user.id,
@@ -652,6 +654,109 @@ def test_knowledge_configuration_and_corpus_drift(client, scenario, db_session):
     assert [c[0] for c in s.providers.calls] == ["routing"]
 
 
+def versioned_corpus(session, scenario):
+    from app.models.enums import DocumentFileType
+    from app.services import documents, retrieval
+    from app.services.document_extraction import PreparedDocumentUpload
+    from tests.integration.test_document_versions import Embeddings
+
+    s = scenario
+    s.member.role = MembershipRole.SYSTEM_ADMIN
+    session.commit()
+    old = documents.upload_document(
+        session,
+        s.workspace.id,
+        s.kb.id,
+        s.user.id,
+        PreparedDocumentUpload("synthetic.txt", DocumentFileType.TXT, b"Synthetic evidence"),
+    )
+    old_id, family_id = old.id, old.family_id
+    retrieval.index_document(
+        session, s.workspace.id, s.kb.id, old_id, Embeddings(), actor_id=s.user.id
+    )
+    new = documents.upload_document(
+        session,
+        s.workspace.id,
+        s.kb.id,
+        s.user.id,
+        PreparedDocumentUpload("replacement.txt", DocumentFileType.TXT, b"Synthetic evidence"),
+        family_id=family_id,
+    )
+    new_id = new.id
+    retrieval.index_document(
+        session, s.workspace.id, s.kb.id, new_id, Embeddings(), actor_id=s.user.id
+    )
+    return old_id, new_id, family_id
+
+
+def activate_version(session, scenario, document_id, family_id):
+    from app.models import DocumentFamily
+    from app.schemas.document import DocumentActivation
+    from app.services.documents import activate_document
+
+    s = scenario
+    revision = session.get(DocumentFamily, family_id).revision
+    activate_document(
+        session,
+        s.workspace.id,
+        s.kb.id,
+        family_id,
+        DocumentActivation(document_id=document_id, expected_revision=revision),
+        s.user.id,
+        s.settings.embedding_model,
+        s.settings.embedding_dimensions,
+    )
+
+
+def test_version_activation_during_evaluation_is_configuration_drift(client, scenario, db_session):
+    s = scenario
+    old_id, new_id, family_id = versioned_corpus(db_session, s)
+    add_case(db_session, s, "knowledge_qa")
+    s.providers.intent = RoutingIntent.KNOWLEDGE_QA
+    s.providers.callback = lambda: activate_version(db_session, s, new_id, family_id)
+    response = post(client, s)
+    assert response.status_code == 201
+    assert response.json()["failure_category"] == "configuration_drift"
+    assert [c[0] for c in s.providers.calls] == ["routing"]
+    row = evaluation_runs.case_rows(db_session, s.workspace.id, response.json()["id"])[0]
+    assert [d["id"] for d in row.context_snapshot["corpus"]["documents"]] == [str(old_id)]
+
+
+def test_version_switch_preserves_terminal_run_and_reads_legacy_context(
+    client, scenario, db_session
+):
+    s = scenario
+    old_id, new_id, family_id = versioned_corpus(db_session, s)
+    add_case(db_session, s, "knowledge_qa")
+    s.providers.intent = RoutingIntent.KNOWLEDGE_QA
+    first = post(client, s).json()
+    assert first["passed_cases"] == 1
+    row = evaluation_runs.case_rows(db_session, s.workspace.id, first["id"])[0]
+    # Simulate a retained Feature 016 v1 corpus fixture, without changing the Run envelope.
+    legacy = {
+        key: value for key, value in row.context_snapshot.items() if key != "snapshot_version"
+    }
+    legacy["corpus"] = {**legacy["corpus"], "documents": [{"id": str(old_id), "version": 1}]}
+    row.context_snapshot = legacy
+    db_session.commit()
+    case_id = row.id
+    activate_version(db_session, s, new_id, family_id)
+    detail = client.get(
+        f"{root(s)}/evaluation-runs/{first['id']}/cases/{case_id}", headers=s.headers
+    ).json()
+    assert detail["context_snapshot"] == legacy
+    assert detail["result"] == "passed"
+    assert (
+        client.get(f"{root(s)}/evaluation-runs/{first['id']}", headers=s.headers).json()["metrics"]
+        == first["metrics"]
+    )
+    second = post(client, s).json()
+    assert second["passed_cases"] == 1
+    new_row = evaluation_runs.case_rows(db_session, s.workspace.id, second["id"])[0]
+    assert new_row.context_snapshot["snapshot_version"] == 2
+    assert [d["id"] for d in new_row.context_snapshot["corpus"]["documents"]] == [str(new_id)]
+
+
 def test_disabled_kb_is_error_and_unexpected_tool_route_never_dispatches(
     client, scenario, db_session, monkeypatch
 ):
@@ -735,7 +840,9 @@ def test_malformed_tool_arguments_are_error_without_side_effects(
 def test_invalid_citation_is_error_not_semantic_failure(client, scenario, db_session, monkeypatch):
     s = scenario
     add_case(db_session, s, "knowledge_qa")
-    doc = Document(
+    doc = make_document(
+        db_session,
+        indexed=True,
         workspace_id=s.workspace.id,
         knowledge_base_id=s.kb.id,
         created_by=s.user.id,

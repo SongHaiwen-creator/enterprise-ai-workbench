@@ -10,7 +10,7 @@ from benchmarks.business_baseline.runner import (
     verify_resources,
 )
 
-from app.api.dependencies.embeddings import get_embedding_provider
+from app.api.dependencies.embeddings import get_embedding_provider, get_index_embedding_provider
 from app.api.routes.evaluation_runs import evaluation_providers, evaluation_session
 from app.main import app
 from app.models.enums import MembershipRole
@@ -84,6 +84,9 @@ def test_prepare_resume_and_frozen_preflight_on_real_postgres(
             return [[1.0] + [0.0] * 1535 for _ in texts]
 
     app.dependency_overrides[get_embedding_provider] = lambda: FakeIndexing()
+    app.dependency_overrides[get_index_embedding_provider] = app.dependency_overrides[
+        get_embedding_provider
+    ]
     manifest, cases, fingerprint = load()
     state = open_state(tmp_path / "state.json", fingerprint, {"workspace_id": str(workspace.id)})
     client.headers.update(headers)

@@ -24,6 +24,7 @@ class GroundedAnswerRequest(BaseModel):
 
 
 class GroundedCitation(BaseModel):
+    family_id: UUID
     model_config = ConfigDict(extra="forbid")
 
     document_id: UUID

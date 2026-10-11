@@ -308,3 +308,32 @@ purge guarantee. Closure is a human judgment; comparison and retest linking rema
 outside Feature 018. PR #43 was human-merged on 2026-10-04. The separately
 user-authorized local runtime upgrade to `0013` was verified that day; repository
 head alone still does not imply any deployment's database revision.
+
+## 14. Document Version Management (Feature 021)
+
+H1-H4-approved implementation on `feat/document-version-management`, pending
+human merge of PR #51. The existing Document ID now consistently identifies one
+concrete version; a separate Workspace/Knowledge-Base-scoped Family points to
+the current version. The current pointer is changed only by explicit activation
+after replacement parsing and indexing, except for initial-upload compatibility
+when no other version has been explicitly selected. Family revision and KB ->
+Family -> Document row locks serialize publication, numbering and status changes.
+Parser/provider work holds no such lock; publication freshly checks authority and
+state after those phases. Lock timeout is a sanitized 409 with rollback.
+
+Successful content and Chunk sets freeze; repeated index requests reuse retained
+results without constructing an SDK client. The shared effective-Document SQL
+filters same-Workspace/KB ownership, active KB, current pointer, ready status and
+compatible complete index before ranking. Search, Q&A, Agent knowledge answers
+and Evaluation corpus capture use that boundary. Corpus capture is one streamed
+SQL statement, avoiding a mixed snapshot across activation. New context format
+version 2 preserves the v1 Run envelope and old history reads; existing drift
+checks still stop execution after effective corpus changes.
+
+Historical citation metadata remains tied to original Document/Chunk identity.
+The UI preserves the returned excerpt and reads only existing version metadata
+on explicit request; there is no historical full-text API or conversation storage.
+Old Chunks deleted before Feature 021 cannot be recovered. Retention increases
+storage and remains governed by existing DB/backup controls, without purge or
+DLP. Revision 0014 was prepared for dedicated-test verification; runtime migration
+and production deployment require separate authorization.

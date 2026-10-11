@@ -735,6 +735,7 @@ def test_knowledge_route_reuses_unchanged_answer_service(
     )
     calls: list[tuple[object, ...]] = []
     citation = AnswerCitation(
+                    family_id=uuid4(),
         document_id=uuid4(), file_name="travel.txt", document_version=1,
         chunk_id=uuid4(), chunk_index=0, excerpt="Travel limit is 100.",
     )

@@ -61,9 +61,20 @@ def update_knowledge_base(
     knowledge_base_id: UUID,
     payload: KnowledgeBaseUpdate,
 ) -> KnowledgeBase:
-    knowledge_base = get_knowledge_base(session, workspace_id, knowledge_base_id)
-    for field_name, value in payload.model_dump(exclude_unset=True).items():
-        setattr(knowledge_base, field_name, value)
-    session.commit()
-    session.refresh(knowledge_base)
-    return knowledge_base
+    from app.services.documents import write_boundary
+
+    with write_boundary(session):
+        knowledge_base = session.scalar(
+            select(KnowledgeBase)
+            .where(
+                KnowledgeBase.workspace_id == workspace_id, KnowledgeBase.id == knowledge_base_id
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        require_scoped_resource(knowledge_base is not None, KNOWLEDGE_BASE_NOT_FOUND)
+        for field_name, value in payload.model_dump(exclude_unset=True).items():
+            setattr(knowledge_base, field_name, value)
+        session.commit()
+        session.refresh(knowledge_base)
+        return knowledge_base

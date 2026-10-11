@@ -1,6 +1,6 @@
 # Feature 021 - Document Version Management
 
-Status: Phase A proposal；等待明确批准，尚未实施
+Status: Phase B implemented and verified；PR #51 待人工审阅与合并
 日期：2026-10-11（Asia/Shanghai）
 Baseline: `origin/main` at `2508d67f0551a3112c80eb78438c9f7b166e0b5b`
 Branch: `feat/document-version-management`
@@ -14,8 +14,10 @@ Risk: High；新增迁移、检索隔离、索引冻结、并发切换与历史�
 索引替代版本后显式激活。准备失败时旧版本继续可用；激活成功后的新检索只使用
 当前有效版本；旧引用始终指向原版本和原 Chunk，不被静默改指到新内容。
 
-本轮仅交付 Phase A：规格、Issue、专用分支、文档验证、commit、push 和草稿 PR。
-不编写 migration 或应用实现，不操作数据库，不运行联网 Provider，不自动合并。
+Phase A 已在 `1c435300cd36912804539b4fea263d180e852385` 完成，建立 Issue #50 与
+[PR #51](https://github.com/SongHaiwen-creator/enterprise-ai-workbench/pull/51)。用户于
+2026-10-11 以“approve”批准该提案 H1–H4。Phase B 沿用同一分支/PR 实施与验证；
+不执行运行库升级、联网 Provider 冒烟或自动合并。
 
 ## 2. 最新规划与基线证据
 
@@ -47,7 +49,7 @@ Feature 021 来源为尚未合并的
 
 ## 3. Scope
 
-Phase B 拟实施：
+已批准的 Phase B 范围：
 
 - 新增逻辑文档 `document_families`；现有 `documents` 继续保存具体版本。
 - 保留现有上传新文档、Document list/detail/status/index 路径与已有响应字段。
@@ -93,7 +95,8 @@ Phase B 拟实施：
 沿用 PDF / UTF-8 TXT / UTF-8 Markdown、10 MiB、文件名规范化、同步提取和安全错误。
 上传不调用 Provider，不自动索引。原文件仍不保存、不提供下载。
 
-初始 version=1 成功 ready 时设为 current_document_id，即使尚未索引；这是原上传
+初始 version=1 成功 ready 且 current 仍为空时设为 current_document_id，即使尚未索引；
+若另一管理员已显式激活替代版本，首版迟到完成不能覆盖该选择。这是原上传
 使用路径的兼容规则，未索引时没有检索结果。初始解析失败 current=null。
 替代上传永远不自动改变 current，即使当前没有版本；必须完成索引后显式激活。
 
@@ -184,7 +187,8 @@ content_sha256、已冻结索引标识（由文档/Chunk 集合可确定），�
 语料捕获需在同一数据库快照内完成，不能把切换前 Document 与切换后 Chunk 混合。
 保留 current-config drift 检查：准备/执行过程中激活、禁用、首次索引等改变有效语料时，
 受影响 Run 按 Feature 016 的现有漂移语义失败，不继续偷偷使用新版或重写旧终态结果。
-新增快照格式使用新的 snapshot_version；保留旧快照读取，不能原地修改旧 JSON / SHA。
+新的知识语料 context 使用 snapshot_version=2；Run 外层 envelope 保留 version=1，
+因为外层结构未改变。保留旧语料 context 的读取，不能原地修改旧 JSON / SHA。
 不改变 scorer、指标分母、Tool dry run 或运行限额，不实现 Feature 023 比较功能。
 
 ### BR-008 - 保密与外发
@@ -350,7 +354,7 @@ aria-live、窄屏与长文件名换行。产品界面不展示迁移号或数�
 documents/retrieval routes 与服务；知识库状态写入的行锁；answers/Agent citation 映射；
 evaluation_snapshot 的有效语料捕获/快照版本兼容；0014；现有 frontend api、knowledge-admin、
 knowledge-qa / Assistant 引用显示；相应测试。避免通用版本引擎、仓储层或额外路由架构。
-Phase B 再更新 DATABASE / ARCHITECTURE 的实现记录；此规格不能被当成已建表证据。
+Phase B 已更新 DATABASE / ARCHITECTURE 的实现记录；运行库建表仍需另行批准升级。
 
 ## 9. Acceptance Criteria
 
@@ -415,7 +419,7 @@ pnpm test、pnpm lint、pnpm build，migration/head/schema checks、git diff --c
 四角色/两 Workspace 在桌面和窄屏完成浏览器主流程，使用 fake providers 和受控数据。
 不以 SQLite 替代，不跳过必需测试，不用历史 Feature 测试数充当本次验证。
 记录实际命令、环境、结果、截图和独立复审到
-`docs/features/021-document-version-management-verification.md`（Phase B 才创建）。
+`docs/features/021-document-version-management-verification.md`（Phase B 验证记录）。
 
 Phase A 只做来源/链接/Markdown/差异检查，不运行应用 suite、数据库或 Provider；
 独立高风险实现复审在 Phase B 完成后、人工合并前执行。
@@ -443,10 +447,11 @@ Workflow；文档合并拆分/移动/重命名、正文差异编辑、原文件�
 
 按照 [AGENTS.md](../../AGENTS.md) 的明确要求
 “STOP and request human approval before:”及所列的“new database migrations”、
-“security-sensitive changes”和“architecture changes”，Phase B 必须等待下列具体批准。
+“security-sensitive changes”和“architecture changes”，Phase B 必须获得下列具体批准；
+用户已批准上述提案提交的 H1–H4。
 本提案不修改认证/RBAC/审批政策，但属于迁移与检索隔离的高风险工作。
 
-| Gate | 待批准的具体事项 |
+| Gate | 已批准的具体事项 |
 |---|---|
 | H1 - Schema / 测试环境 | 创建 0014 与上述 Family/Document 扩展和逐条回填；仅在核实的 localhost:5432 `enterprise_ai_workbench_test` 做 schema 重建、迁移/降级/约束验证，清除该专用测试库数据；与运行库不同且无并发测试 |
 | H2 - 生命周期 / 兼容 | 批准初始 current 兼容例外、替代显式激活、历史回退、内容/Chunk 冻结、重复索引复用、revision/锁序与安全降级限制 |
@@ -467,5 +472,16 @@ Phase A 草稿 PR 不使用 Closes 关闭功能 Issue；Phase B 验证后更新�
 一致性和安全降级；补充 legacy_backfill 标记，覆盖新上传登记后尚未完成解析的降级拒绝。
 提交前执行 staged diff / whitespace 检查；交付状态以实际 commit、push 和草稿 PR 为准。
 
-未运行应用测试、数据库迁移/重建或 Provider 请求。尚无 Phase B 实现或测试证据，
-独立高风险实现复审待实施后完成；不能据此宣称 Feature 已实现/验证/交付。
+Phase A 当时未运行应用测试、数据库迁移/重建或 Provider 请求。该阶段没有 Phase B
+实现或测试证据，不能仅据 Phase A 宣称 Feature 已实现/验证/交付。
+
+## 14. Phase B 实现与验证记录
+
+用户批准 H1–H4 后，已在同一分支实现上述范围，完成专项与完整 PostgreSQL 回归、
+前端测试/lint/build、浏览器验收、自审与独立高风险复审。最终 backend 1684 passed，
+frontend 9 Node API + 261 Vitest passed，无跳过；独立复审无剩余阻断。
+详见 [实现与验证记录](021-document-version-management-verification.md)。
+
+0014 仅在指定测试库验证，未升级运行/生产库，未调用真实 Provider 或部署。
+PR #51 更新为实施 PR，使用 Closes #50；人工合并前 Feature 不标记已交付，
+本线程不开始 Feature 022。

@@ -2,11 +2,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Chunk, Document
+from app.models import Chunk, Document, DocumentFamily, KnowledgeBase
 from app.models.enums import DocumentStatus, KnowledgeBaseStatus
+from app.services import documents as versions
 from app.services.chunking import split_document_text
 from app.services.documents import get_document
 from app.services.embeddings import (
@@ -31,6 +32,7 @@ class DocumentIndexResult:
 
 @dataclass(frozen=True)
 class SearchResult:
+    family_id: UUID
     chunk_id: UUID
     document_id: UUID
     file_name: str
@@ -62,54 +64,100 @@ def _validated_embeddings(
     return normalized
 
 
-def index_document(
-    session: Session,
-    workspace_id: UUID,
-    knowledge_base_id: UUID,
-    document_id: UUID,
-    provider: EmbeddingProvider,
-) -> DocumentIndexResult:
-    knowledge_base = get_knowledge_base(session, workspace_id, knowledge_base_id)
-    if knowledge_base.status is KnowledgeBaseStatus.DISABLED:
-        raise ConflictError("Cannot index a disabled knowledge base")
+def cached_index(document, model, dimensions):
+    if document.indexed_at is None:
+        return None
+    if document.indexed_model != model or document.indexed_dimensions != dimensions:
+        raise ConflictError("Document index configuration is incompatible")
+    return DocumentIndexResult(
+        document_id=document.id,
+        chunk_count=document.indexed_chunk_count,
+        embedding_model=document.indexed_model,
+        embedding_dimensions=document.indexed_dimensions,
+        indexed_at=document.indexed_at,
+    )
 
+
+def index_document(session, workspace_id, knowledge_base_id, document_id, provider, *, actor_id):
+    base = get_knowledge_base(session, workspace_id, knowledge_base_id)
+    versions.current_authority(session, workspace_id, actor_id)
+    if base.status is not KnowledgeBaseStatus.ACTIVE:
+        raise ConflictError("Cannot index a disabled knowledge base")
     document = get_document(session, workspace_id, knowledge_base_id, document_id)
     if document.status is not DocumentStatus.READY or not document.extracted_text:
         raise ConflictError("Document is not ready for indexing")
-
-    contents = split_document_text(document.extracted_text)
+    existing = cached_index(document, provider.model, provider.dimensions)
+    if existing is not None:
+        return existing
+    content, expected_hash, family_id = (
+        document.extracted_text,
+        document.content_sha256,
+        document.family_id,
+    )
+    # No database transaction/lock spans the provider phase.
+    session.commit()
+    contents = split_document_text(content)
     if not contents:
         raise ConflictError("Document is not ready for indexing")
     embeddings = _validated_embeddings(provider, contents)
+    with versions.write_boundary(session):
+        versions.locked_base(session, workspace_id, knowledge_base_id, actor_id)
+        family = versions.get_family(session, workspace_id, knowledge_base_id, family_id, lock=True)
+        document = get_document(session, workspace_id, knowledge_base_id, document_id, lock=True)
+        if document.status is not DocumentStatus.READY or document.content_sha256 != expected_hash:
+            raise ConflictError("Document version operation conflict")
+        existing = cached_index(document, provider.model, provider.dimensions)
+        if existing is not None:
+            session.commit()
+            return existing
+        chunks = [
+            Chunk(
+                workspace_id=workspace_id,
+                document_id=document_id,
+                content=text,
+                chunk_index=index,
+                embedding_model=provider.model,
+                embedding=embedding,
+            )
+            for index, (text, embedding) in enumerate(zip(contents, embeddings, strict=True))
+        ]
+        session.add_all(chunks)
+        session.flush()
+        document.indexed_at = max(chunk.created_at for chunk in chunks)
+        document.indexed_model = provider.model
+        document.indexed_dimensions = provider.dimensions
+        document.indexed_chunk_count = len(chunks)
+        versions.changed(family)
+        result = cached_index(document, provider.model, provider.dimensions)
+        session.commit()
+        return result
 
-    session.execute(
-        delete(Chunk).where(
-            Chunk.workspace_id == workspace_id,
-            Chunk.document_id == document_id,
-        )
-    )
-    chunks = [
-        Chunk(
-            workspace_id=workspace_id,
-            document_id=document_id,
-            content=content,
-            chunk_index=index,
-            embedding_model=provider.model,
-            embedding=embedding,
-        )
-        for index, (content, embedding) in enumerate(zip(contents, embeddings, strict=True))
-    ]
-    session.add_all(chunks)
-    session.flush()
-    indexed_at = max(chunk.created_at for chunk in chunks)
-    session.commit()
 
-    return DocumentIndexResult(
-        document_id=document_id,
-        chunk_count=len(chunks),
-        embedding_model=provider.model,
-        embedding_dimensions=provider.dimensions,
-        indexed_at=indexed_at,
+def effective_documents(workspace_id, knowledge_base_id, model, dimensions):
+    """One shared SQL eligibility predicate for retrieval and corpus snapshots."""
+    return (
+        select(Document)
+        .join(
+            DocumentFamily,
+            (DocumentFamily.id == Document.family_id)
+            & (DocumentFamily.workspace_id == Document.workspace_id)
+            & (DocumentFamily.knowledge_base_id == Document.knowledge_base_id)
+            & (DocumentFamily.current_document_id == Document.id),
+        )
+        .join(
+            KnowledgeBase,
+            (KnowledgeBase.id == Document.knowledge_base_id)
+            & (KnowledgeBase.workspace_id == Document.workspace_id),
+        )
+        .where(
+            Document.workspace_id == workspace_id,
+            Document.knowledge_base_id == knowledge_base_id,
+            Document.status == DocumentStatus.READY,
+            Document.indexed_at.is_not(None),
+            Document.indexed_model == model,
+            Document.indexed_dimensions == dimensions,
+            KnowledgeBase.status == KnowledgeBaseStatus.ACTIVE,
+        )
     )
 
 
@@ -128,25 +176,20 @@ def search_knowledge_base(
     query_embedding = _validated_embeddings(provider, [query])[0]
     distance = Chunk.embedding.cosine_distance(query_embedding).label("cosine_distance")
     statement = (
-        select(Chunk, Document, distance)
+        effective_documents(workspace_id, knowledge_base_id, provider.model, provider.dimensions)
+        .add_columns(Chunk, distance)
         .join(
-            Document,
-            (Document.id == Chunk.document_id)
-            & (Document.workspace_id == Chunk.workspace_id),
+            Chunk,
+            (Chunk.document_id == Document.id) & (Chunk.workspace_id == Document.workspace_id),
         )
-        .where(
-            Chunk.workspace_id == workspace_id,
-            Chunk.embedding_model == provider.model,
-            Document.workspace_id == workspace_id,
-            Document.knowledge_base_id == knowledge_base_id,
-            Document.status == DocumentStatus.READY,
-        )
+        .where(Chunk.workspace_id == workspace_id, Chunk.embedding_model == provider.model)
         .order_by(distance, Chunk.document_id, Chunk.chunk_index)
         .limit(limit)
     )
     rows = session.execute(statement).all()
     return [
         SearchResult(
+            family_id=document.family_id,
             chunk_id=chunk.id,
             document_id=document.id,
             file_name=document.file_name,
@@ -155,5 +198,5 @@ def search_knowledge_base(
             content=chunk.content,
             cosine_distance=float(cosine_distance),
         )
-        for chunk, document, cosine_distance in rows
+        for document, chunk, cosine_distance in rows
     ]

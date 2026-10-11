@@ -59,6 +59,7 @@ export interface KnowledgeBase {
 }
 
 export interface GroundedCitation {
+  family_id?: string;
   document_id: string;
   file_name: string;
   document_version: number;

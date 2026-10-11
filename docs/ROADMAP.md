@@ -226,8 +226,8 @@ Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
 Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
 Feature 016 Evaluation Run & Metrics merged/delivered in PR #37 on 2026-10-03;
 Features 017-020 merged/delivered, including Feature 020 PR #49;
-Feature 021 Document Version Management is in Phase A specification,
-with implementation awaiting explicit approval)
+Feature 021 Document Version Management is implemented and verified in PR #51,
+awaiting human review and merge)
 
 Goal:
 
@@ -355,7 +355,7 @@ and the current navigation without new APIs, migrations, execution permissions,
 approval policies or dependencies. Configuration versions remain Feature 022;
 its implementation thread ends with human merge.
 
-### Document Version Management (Feature 021 - Phase A proposal)
+### Document Version Management (Feature 021 - implemented, awaiting human merge)
 
 The user selected Feature 021 after Feature 020's human merge and requested
 specification first. The proposal is
@@ -364,18 +364,22 @@ branch `feat/document-version-management`, based on latest main `2508d67`.
 It adopts only Feature 021's minimum scope from still-open planning PR #40
 at `77acb1a`; the full remaining MVP plan is not adopted or implemented.
 
-Proposed scope: stable document families with immutable concrete versions,
+Implemented scope: stable document families with immutable concrete versions,
 replacement upload and explicit activation, failure preservation of the old
 current version, frozen successful Chunk sets, current-only retrieval and
 Evaluation corpus capture, and historical citation identity. Reuse the existing
 Knowledge Administration UI and current Knowledge/System administrator policy.
 
-This is high-risk Phase A design only. Proposed migration 0014, legacy backfill,
-indexing compatibility changes, atomic activation, historical storage, API/UI
-and dedicated-test-database destructive verification require explicit H1-H4
-approval tied to the proposal commit. No application implementation, migration,
-database reset, runtime upgrade or live Provider verification has occurred.
-Independent implementation review and human merge remain required; do not start
+The user approved H1-H4 of proposal `1c435300cd36912804539b4fea263d180e852385`
+with "approve" on 2026-10-11. Phase B implementation and migration 0014 were
+verified exclusively against the authorized dedicated local test database.
+Full backend regression passed (1684 tests), frontend tests passed (9 Node API
+and 261 Vitest), and Ruff, frontend lint/build, browser acceptance and independent
+high-risk review passed. Evidence:
+`docs/features/021-document-version-management-verification.md`.
+PR #51 is awaiting human review and merge; Issue #50 remains open until merge.
+No runtime/production database upgrade, deployment or live Provider verification
+was performed. Feature 021 is not delivered until human merge; do not start
 Feature 022 in this development thread.
 
 ### Supporting business evaluation baseline

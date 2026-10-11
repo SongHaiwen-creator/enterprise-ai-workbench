@@ -8,6 +8,7 @@ from app.api.dependencies.authorization import (
     ActiveWorkspaceMembership,
     KnowledgeAdministratorMembership,
 )
+from app.api.document_route import DocumentRoute
 from app.schemas.common import ErrorResponse
 from app.schemas.document import DocumentResponse, DocumentStatusUpdate
 from app.services import documents as document_service
@@ -21,6 +22,7 @@ from app.services.document_extraction import (
 router = APIRouter(
     prefix=("/workspaces/{workspace_id}/knowledge-bases/{knowledge_base_id}/documents"),
     tags=["documents"],
+    route_class=DocumentRoute,
 )
 
 DOCUMENT_RESPONSES = {
@@ -48,14 +50,7 @@ async def upload_document(
     current_user: CurrentUser,
     _administrator: KnowledgeAdministratorMembership,
 ) -> DocumentResponse:
-    try:
-        upload = await prepare_upload(file)
-    except UploadTooLargeError as exc:
-        raise HTTPException(status_code=413, detail=str(exc)) from exc
-    except UnsupportedDocumentTypeError as exc:
-        raise HTTPException(status_code=415, detail=str(exc)) from exc
-    except UploadValidationError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    upload = await prepared_upload(file)
 
     document = document_service.upload_document(
         session,
@@ -64,7 +59,7 @@ async def upload_document(
         current_user.id,
         upload,
     )
-    return DocumentResponse.model_validate(document)
+    return document_service.document_response(session, document)
 
 
 @router.get(
@@ -83,7 +78,7 @@ def list_documents(
         workspace_id,
         knowledge_base_id,
     )
-    return [DocumentResponse.model_validate(item) for item in documents]
+    return [document_service.document_response(session, item) for item in documents]
 
 
 @router.get(
@@ -104,7 +99,7 @@ def get_document(
         knowledge_base_id,
         document_id,
     )
-    return DocumentResponse.model_validate(document)
+    return document_service.document_response(session, document)
 
 
 @router.patch(
@@ -126,5 +121,17 @@ def update_document_status(
         knowledge_base_id,
         document_id,
         payload,
+        actor_id=_administrator.user_id,
     )
-    return DocumentResponse.model_validate(document)
+    return document_service.document_response(session, document)
+
+
+async def prepared_upload(file):
+    try:
+        return await prepare_upload(file)
+    except UploadTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from None
+    except UnsupportedDocumentTypeError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from None
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None

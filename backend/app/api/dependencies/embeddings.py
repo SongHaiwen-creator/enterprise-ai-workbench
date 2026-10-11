@@ -21,3 +21,25 @@ ConfiguredEmbeddingProvider = Annotated[
     EmbeddingProvider,
     Depends(get_embedding_provider),
 ]
+
+
+class DeferredIndexProvider:
+    """Frozen-index reads need configuration identity, never an SDK/client/key."""
+
+    def __init__(self, settings):
+        self.settings = settings
+        self.model = settings.embedding_model
+        self.dimensions = settings.embedding_dimensions
+
+    def embed_texts(self, texts):
+        return get_embedding_provider(self.settings).embed_texts(texts)
+
+
+def get_index_embedding_provider(settings: ApplicationSettings) -> EmbeddingProvider:
+    return DeferredIndexProvider(settings)
+
+
+ConfiguredIndexEmbeddingProvider = Annotated[
+    EmbeddingProvider,
+    Depends(get_index_embedding_provider),
+]
