@@ -5,6 +5,7 @@ import { displayMessage, formatEnumLabel } from "@/utils/presentation";
 import { FormEvent, useState } from "react";
 
 import type { KnowledgeBasesLoadFailure } from "@/app/components/knowledge-qa";
+import { CitationVersion } from "@/app/components/citation-version";
 import {
   AgentRouteResponse,
   AgentSummary,
@@ -472,6 +473,8 @@ export function Assistant({
                   片段 {selectedCitation.chunk_index + 1} · 文档版本 {selectedCitation.document_version}
                 </p>
                 <blockquote>{selectedCitation.excerpt}</blockquote>
+                <CitationVersion workspaceId={workspaceId} knowledgeBaseId={selectedKnowledgeBaseId}
+                  accessToken={accessToken} citation={selectedCitation} onUnauthorized={onUnauthorized} />
                 <p className="verified-note"><span aria-hidden="true">✓</span> 以下摘录来自检索到的原始资料</p>
               </section>
             )}

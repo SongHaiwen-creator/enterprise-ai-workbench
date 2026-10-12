@@ -6,14 +6,14 @@ import {
   ApiError, type KnowledgeBase, type MembershipRole, getCurrentUser, getWorkspace, listAgents,
   listKnowledgeBases, listWorkspaceMembers, listWorkspaces, login,
 } from "@/utils/api";
-import { getKnowledgeBase, listDocuments, updateKnowledgeBase } from "@/utils/knowledge-admin";
+import { getKnowledgeBase, listDocumentFamilies, updateKnowledgeBase } from "@/utils/knowledge-admin";
 
 vi.mock("@/utils/api", async importOriginal => ({
   ...await importOriginal<typeof import("@/utils/api")>(), login: vi.fn(), getCurrentUser: vi.fn(),
   getWorkspace: vi.fn(), listAgents: vi.fn(), listKnowledgeBases: vi.fn(), listWorkspaceMembers: vi.fn(), listWorkspaces: vi.fn(),
 }));
 vi.mock("@/utils/knowledge-admin", async importOriginal => ({
-  ...await importOriginal<typeof import("@/utils/knowledge-admin")>(), getKnowledgeBase: vi.fn(), listDocuments: vi.fn(), updateKnowledgeBase: vi.fn(),
+  ...await importOriginal<typeof import("@/utils/knowledge-admin")>(), getKnowledgeBase: vi.fn(), listDocumentFamilies: vi.fn(), updateKnowledgeBase: vi.fn(),
 }));
 let base: KnowledgeBase;
 function workspace(id: string, role: MembershipRole) {
@@ -36,7 +36,7 @@ beforeEach(() => {
   vi.mocked(listWorkspaceMembers).mockResolvedValue([]); vi.mocked(listAgents).mockResolvedValue([]);
   vi.mocked(listKnowledgeBases).mockImplementation(async () => [base]);
   vi.mocked(getKnowledgeBase).mockImplementation(async () => base);
-  vi.mocked(listDocuments).mockResolvedValue([]);
+  vi.mocked(listDocumentFamilies).mockResolvedValue([]);
   vi.mocked(updateKnowledgeBase).mockImplementation(async (_w, _id, values) => { base = { ...base, ...values } as KnowledgeBase; return base; });
 });
 afterEach(cleanup);

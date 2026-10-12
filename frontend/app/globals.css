@@ -293,6 +293,9 @@ fieldset { min-width: 0; }
 
 .bad-cases { min-width: 0; }
 .knowledge-admin { min-width: 0; }
+.citation-version { margin-top: 16px; color: var(--muted); font-size: 12px; }
+.citation-version button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--primary); }
+.knowledge-documents button[aria-pressed="true"] { background: var(--soft); border-color: var(--primary); }
 .agent-admin-detail { min-width: 0; }
 .agent-tool-admin .knowledge-library button[aria-pressed="true"] { background: var(--soft); border-color: var(--primary); }
 .admin-tabs { margin-bottom: 24px; }

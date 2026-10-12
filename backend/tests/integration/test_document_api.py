@@ -24,6 +24,7 @@ from app.models.enums import (
 )
 from app.security.tokens import create_access_token
 from app.services.document_extraction import MAX_UPLOAD_BYTES
+from tests.integration.document_factory import make_document
 
 pytestmark = pytest.mark.integration
 JWT_SECRET = "document-api-secret-longer-than-thirty-two-bytes"
@@ -125,7 +126,7 @@ def create_document(
     status: DocumentStatus = DocumentStatus.READY,
     extracted_text: str | None = "Approved policy text",
 ) -> Document:
-    document = Document(
+    document = make_document(session,
         workspace_id=workspace.id,
         knowledge_base_id=knowledge_base.id,
         file_name=file_name,
@@ -616,6 +617,7 @@ def test_disabled_knowledge_base_rejects_upload_but_allows_metadata_management(
         status=KnowledgeBaseStatus.DISABLED,
     )
     document = create_document(db_session, workspace, knowledge_base, caller)
+    db_session.commit()
 
     upload = client.post(
         document_collection(workspace, knowledge_base),

@@ -63,9 +63,10 @@ def insert_document_ownership_rows(
     connection.execute(
         text(
             "INSERT INTO documents "
-            "(id, workspace_id, knowledge_base_id, file_name, file_type, status, created_by) "
+            "(id, workspace_id, knowledge_base_id, file_name, file_type, status, "
+            "extracted_text, created_by) "
             "VALUES (:id, :workspace_id, :knowledge_base_id, :file_name, 'txt', "
-            "'ready', :created_by)"
+            "'ready', 'Legacy policy text', :created_by)"
         ),
         {
             "id": document_id,
@@ -141,7 +142,7 @@ def test_initial_migration_creates_expected_schema(postgres_engine: Engine) -> N
 
     with postgres_engine.connect() as connection:
         migration_context = MigrationContext.configure(connection)
-        assert migration_context.get_current_revision() == "0013"
+        assert migration_context.get_current_revision() == "0014"
 
 
 def test_knowledge_base_migration_upgrades_and_downgrades(
@@ -654,7 +655,7 @@ def test_applied_migrations_are_unchanged_and_head_is_single() -> None:
         content = (versions / name).read_bytes().replace(b"\r\n", b"\n")
         assert hashlib.sha256(content).hexdigest() == expected, name
     script = ScriptDirectory.from_config(Config(str(BACKEND_ROOT / "alembic.ini")))
-    assert script.get_heads() == ["0013"]
+    assert script.get_heads() == ["0014"]
     assert script.get_revision("0010").down_revision == "0009"
 
 

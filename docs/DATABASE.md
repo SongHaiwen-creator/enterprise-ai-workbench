@@ -157,7 +157,7 @@ A knowledge base belongs to exactly one workspace.
 
 # 7. Document
 
-Represents a document uploaded into a knowledge base.
+Represents one concrete uploaded version in a Knowledge Base document family.
 
 Table: documents
 
@@ -168,12 +168,18 @@ Fields:
 | id | UUID | Primary key |
 | workspace_id | UUID | Foreign key → workspaces.id |
 | knowledge_base_id | UUID | Foreign key → knowledge_bases.id |
+| family_id | UUID | Feature 021 composite reference to the same Workspace/Knowledge Base family |
 | file_name | VARCHAR | Original file name |
 | file_type | VARCHAR | pdf / txt / md |
 | status | VARCHAR | uploaded / processing / ready / failed / disabled |
 | version | INTEGER | Document version |
 | extracted_text | TEXT | Normalized text retained for later chunking; not exposed by the Document API |
 | processing_error | VARCHAR | Sanitized processing failure summary |
+| content_sha256 | CHAR(64) | Hash of normalized extracted UTF-8 text; immutable after parsing |
+| indexed_at | TIMESTAMPTZ | Nullable first complete index timestamp; frozen after success |
+| indexed_model | VARCHAR(100) | Nullable frozen embedding model |
+| indexed_dimensions | INTEGER | Nullable frozen dimensions; 1536 |
+| indexed_chunk_count | INTEGER | Nullable positive complete Chunk count |
 | created_by | UUID | Foreign key → users.id |
 | created_at | TIMESTAMP | Creation time |
 | updated_at | TIMESTAMP | Last update time |
@@ -182,9 +188,12 @@ The MVP only supports text-extractable documents.
 
 The Document Management API accepts PDF, TXT and Markdown uploads up to
 10 MiB. It retains normalized extracted text in PostgreSQL but does not retain
-the original uploaded binary. New documents start at version 1; replacement
-and automatic version management are deferred until a stable document-family
-model is defined.
+the original uploaded binary. Initial uploads create independent families at
+version 1. Feature 021 adds replacement upload with unique increasing family
+version numbers and explicit activation; filenames do not establish identity.
+Parsing and the first successful index freeze content and Chunk identity.
+This is implemented on the Feature 021 branch pending human merge of PR #51;
+repository revision 0014 does not imply runtime database migration.
 
 Feature 008 migration `0006` adds a composite foreign key from
 `documents(knowledge_base_id, workspace_id)` to
@@ -216,10 +225,12 @@ Fields:
 Chunks are used for RAG retrieval.
 
 Feature 008 uses `text-embedding-3-small` with 1,536 dimensions and exact
-cosine-distance search. Chunks are created or atomically replaced only through
-the workspace-scoped Document indexing operation. Retrieval joins each Chunk
-through its Document and filters the target Workspace, Knowledge Base, and
-ready Document status before ranking. Approximate vector indexes are deferred.
+cosine-distance search. Feature 021 changes Document indexing to atomic first
+creation followed by frozen reuse; content/index updates require a new version.
+Retrieval joins each Chunk through its Document, Family current pointer and
+active Knowledge Base, filtering same-Workspace/Knowledge-Base ownership,
+ready status and complete compatible index before ranking. Approximate vector
+indexes are deferred.
 A composite foreign key enforces that each Chunk's `workspace_id` matches its
 parent Document's Workspace.
 
@@ -665,3 +676,39 @@ no provider egress, automated DLP, retention or purge is implemented.
 
 Exact contracts, constraints, tests and approval boundaries are defined in
 `docs/features/018-bad-case-management.md`. Runtime/production migration is not authorized.
+
+# 21. Document Family and Frozen Version Index (Feature 021)
+
+Implemented on `feat/document-version-management`, Issue #50 and PR #51 pending
+human merge. H1-H4 were explicitly approved against proposal `1c43530`.
+Additive revision `0014` follows `0013`; its validation is restricted to the
+dedicated test database. No runtime/production upgrade is implied or authorized.
+
+`document_families` stores UUID identity/Workspace/Knowledge Base/creator,
+immutable first-file display name, nullable current Document ID, positive
+next_version and revision, server-owned legacy_backfill flag and timestamps.
+A composite current pointer references exactly this Family's concrete version
+in the same Workspace/Knowledge Base. Version uniqueness is `(family_id,version)`;
+Document-to-Family composite ownership, existing Chunk ownership and RESTRICT
+foreign keys remain enforced. Service row locks and expected revision serialize
+activation, upload numbering, index publication and status changes.
+
+Each old Document is backfilled into its own Family, preserving original IDs,
+version numbers, names, state, text, timestamps and Chunk sets. Same names are
+never merged. Content hashes and complete existing index metadata are derived
+locally without a Provider call. Invalid old content/ownership/index data aborts
+the migration transaction. CHECK constraints reject partial-null indexes, invalid
+hashes and terminal parse/content inconsistencies.
+
+Content and the first complete successful Chunk set are application-immutable;
+there is no DBA-proof storage claim. Current pointer changes do not rewrite old
+citations, Evaluation history or Bad Cases. The new Knowledge corpus context
+uses snapshot_version=2 within the unchanged v1 Run envelope. Retained v1 contexts
+remain readable. Full text/Chunk history stays confidential in PostgreSQL with
+no new content-read, deletion, export or retention API.
+
+Downgrade is permitted only when all Families are legacy backfills at revision 1.
+Any newly registered Family or subsequent version-management write refuses the
+unsafe downgrade that would expose multiple ready historical versions through
+the old retrieval logic. Detailed contracts and tests:
+`docs/features/021-document-version-management.md`.

@@ -22,6 +22,7 @@ ANSWER_RETRIEVAL_LIMIT = 5
 
 @dataclass(frozen=True)
 class AnswerCitation:
+    family_id: UUID
     document_id: UUID
     file_name: str
     document_version: int
@@ -112,6 +113,7 @@ def answer_question(
             raise GenerationProviderError("Generation provider request failed")
         citations.append(
             AnswerCitation(
+                family_id=result.family_id,
                 document_id=result.document_id,
                 file_name=result.file_name,
                 document_version=result.document_version,

@@ -29,6 +29,7 @@ class DocumentIndexResponse(BaseModel):
 
 
 class KnowledgeSearchResult(BaseModel):
+    family_id: UUID
     model_config = ConfigDict(extra="forbid")
 
     chunk_id: UUID

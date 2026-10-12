@@ -4,6 +4,7 @@ from app.models.approval import Approval, MockITAccessRequest
 from app.models.bad_case import BadCase, BadCaseHistory
 from app.models.chunk import Chunk
 from app.models.document import Document
+from app.models.document_family import DocumentFamily
 from app.models.evaluation import EvaluationCase, EvaluationDataset
 from app.models.evaluation_run import EvaluationRun, EvaluationRunCase
 from app.models.execution_log import ExecutionLog
@@ -21,6 +22,7 @@ __all__ = [
     "BadCaseHistory",
     "Chunk",
     "Document",
+    "DocumentFamily",
     "ExecutionLog",
     "EvaluationCase",
     "EvaluationDataset",

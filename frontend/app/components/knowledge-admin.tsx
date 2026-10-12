@@ -3,9 +3,10 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, type KnowledgeBase, type MembershipRole, listKnowledgeBases } from "@/utils/api";
 import {
-  type DocumentIndexResponse, type KnowledgeDocument, type KnowledgeBaseUpdate,
-  createKnowledgeBase, getDocument, getKnowledgeBase, indexDocument, listDocuments,
-  updateDocumentStatus, updateKnowledgeBase, uploadDocument,
+  type DocumentIndexResponse, type DocumentFamily, type KnowledgeDocument, type KnowledgeBaseUpdate,
+  createKnowledgeBase, getDocument, getKnowledgeBase, indexDocument,
+  updateDocumentStatus, updateKnowledgeBase, uploadDocument, listDocumentFamilies,
+  getDocumentFamily, listDocumentVersions, uploadDocumentVersion, activateDocumentVersion,
 } from "@/utils/knowledge-admin";
 import { displayMessage, formatTimestamp } from "@/utils/presentation";
 
@@ -55,6 +56,9 @@ export function KnowledgeAdmin(props: Props) {
 function WorkspaceKnowledgeAdmin({ workspaceId, accessToken, onUnauthorized, onPendingChange, onBasesChange }: Props) {
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [base, setBase] = useState<KnowledgeBase | null>(null);
+  const [families, setFamilies] = useState<DocumentFamily[]>([]);
+  const [family, setFamily] = useState<DocumentFamily | null>(null);
+  const [replacement, setReplacement] = useState(false);
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [document, setDocument] = useState<KnowledgeDocument | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -80,7 +84,7 @@ function WorkspaceKnowledgeAdmin({ workspaceId, accessToken, onUnauthorized, onP
   }
   function resetDocuments() {
     documentsRequest.current += 1; detailRequest.current += 1;
-    setDocuments([]); setDocument(null); setFile(null); setFileEpoch(n => n + 1);
+    setFamilies([]); setFamily(null); setReplacement(false); setDocuments([]); setDocument(null); setFile(null); setFileEpoch(n => n + 1);
     setIndexResult(null); setLoadingDocuments(false);
   }
   function failure(reason: unknown, mutation = false) {
@@ -105,18 +109,40 @@ function WorkspaceKnowledgeAdmin({ workspaceId, accessToken, onUnauthorized, onP
       : errors[status] ?? (reason instanceof ApiError ? displayMessage(reason.message, status) : "暂时无法加载，请手动刷新。"));
   }
 
-  async function loadDocuments(baseId: string) {
+  async function loadDocuments(baseId: string, preferredFamily?: string, preferredDocument?: string) {
     const sequence = ++documentsRequest.current;
-    detailRequest.current += 1; setDocument(null); setIndexResult(null); setLoadingDocuments(true);
+    detailRequest.current += 1; setDocument(null); setFamily(null); setLoadingDocuments(true);
     try {
-      const items = await listDocuments(workspaceId, baseId, accessToken);
+      const items = await listDocumentFamilies(workspaceId, baseId, accessToken);
       if (!live.current || sequence !== documentsRequest.current) return;
-      setDocuments(items);
+      setFamilies(items); setDocuments([]);
+      const chosen = items.find(item => item.id === preferredFamily);
+      if (chosen) await openFamily(chosen, baseId, preferredDocument);
     } catch (reason) {
       if (!live.current || sequence !== documentsRequest.current) return;
-      setDocuments([]); failure(reason); throw reason;
+      setFamilies([]); setFamily(null); setDocuments([]); failure(reason); throw reason;
     } finally {
       if (live.current && sequence === documentsRequest.current) setLoadingDocuments(false);
+    }
+  }
+  async function openFamily(item: DocumentFamily, baseId: string, preferredDocument?: string) {
+    const sequence = ++detailRequest.current;
+    setFamily(null); setDocuments([]); setDocument(null); setFile(null); setReplacement(false); setFileEpoch(n => n + 1);
+    try {
+      const [fresh, versions] = await Promise.all([
+        getDocumentFamily(workspaceId, baseId, item.id, accessToken),
+        listDocumentVersions(workspaceId, baseId, item.id, accessToken),
+      ]);
+      if (!live.current || sequence !== detailRequest.current) return;
+      setFamily(fresh); setDocuments(versions);
+      const chosen = versions.find(v => v.id === preferredDocument) ?? versions.find(v => v.id === fresh.current_document_id) ?? versions[0];
+      if (chosen) {
+        const detail = await getDocument(workspaceId, baseId, chosen.id, accessToken);
+        if (live.current && sequence === detailRequest.current) setDocument(detail);
+      }
+    } catch (reason) {
+      if (!live.current || sequence !== detailRequest.current) return;
+      setFamily(null); setDocuments([]); setDocument(null); failure(reason); throw reason;
     }
   }
   async function chooseBase(item: KnowledgeBase) {
@@ -220,12 +246,13 @@ function WorkspaceKnowledgeAdmin({ workspaceId, accessToken, onUnauthorized, onP
     if (!/\.(pdf|txt|md)$/i.test(file.name) || file.size === 0 || file.size > 10 * 1024 * 1024) {
       setError("请选择非空 PDF、TXT 或 Markdown 文件，大小不超过 10 MiB。"); return;
     }
-    const chosen = base;
-    void mutate(() => uploadDocument(workspaceId, chosen.id, file, accessToken), result => {
+    const chosen = base, chosenFamily = replacement ? family : null;
+    if (replacement && !chosenFamily) return;
+    void mutate(() => chosenFamily ? uploadDocumentVersion(workspaceId, chosen.id, chosenFamily.id, file, accessToken) : uploadDocument(workspaceId, chosen.id, file, accessToken), result => {
       setFile(null); setFileEpoch(n => n + 1);
-      return result.status === "failed" ? `文档已登记，解析失败。${result.processing_error ?? "请检查文件内容。"} 修正后重新选择文件上传，将创建独立文档。`
-        : "上传并解析完成，可手动索引。";
-    }, () => loadDocuments(chosen.id));
+      return result.status === "failed" ? `文档已登记，解析失败。${result.processing_error ?? "请检查文件内容。"} 修正后重新选择文件上传，失败记录保留。`
+        : chosenFamily ? "替代版本已解析，当前版本未切换。请索引后显式激活。" : "上传并解析完成，可手动索引。";
+    }, result => loadDocuments(chosen.id, result.family_id, result.id));
   }
   async function openDocument(item: KnowledgeDocument) {
     if (!base || pending.current || blocked) return;
@@ -273,18 +300,29 @@ function WorkspaceKnowledgeAdmin({ workspaceId, accessToken, onUnauthorized, onP
         {base && !creating && <section className="qa-context-card" aria-label="文档管理">
           <div className="knowledge-heading"><h2>{base.name} · 文档</h2>
             <button disabled={locked} onClick={() => { setIndexResult(null); void read(() => loadBases(base.id)); }}>刷新文档与状态</button></div>
-          {base.status === "disabled" && <p>知识库已禁用：可查看和启停已有文档，上传与索引不可用。</p>}
+          {base.status === "disabled" && <p>知识库已禁用：可查看和启停已有文档，上传、索引与激活不可用。</p>}
           <form className="knowledge-form" onSubmit={submitUpload}><fieldset disabled={locked || base.status !== "active"}>
-            <legend>上传文档</legend>
+            <legend>{replacement ? "上传替代版本" : "上传新文档"}</legend>
             <p>单个文件最多 10 MiB。PDF 须可提取文本；TXT/Markdown 须为 UTF-8。原始文件不保留，同名上传创建独立文档。</p>
-            <label>选择文档<input key={fileEpoch} type="file" accept=".pdf,.txt,.md" onChange={e => { setFile(e.target.files?.[0] ?? null); setError(""); }} /></label>
+            <label>{replacement ? `选择替代文件（${family?.display_name}）` : "选择文档"}<input key={fileEpoch} type="file" accept=".pdf,.txt,.md" onChange={e => { setFile(e.target.files?.[0] ?? null); setError(""); }} /></label>
             <button type="submit" className="primary-button" disabled={!file}>上传并解析</button>
           </fieldset></form>
+          {replacement && <button disabled={locked} onClick={() => { setReplacement(false); setFile(null); setFileEpoch(n => n + 1); }}>改为上传新文档</button>}
           {loadingDocuments && <p role="status">正在加载文档…</p>}
-          {!loadingDocuments && !documents.length && !error && <p>暂无文档，请上传文档。</p>}
+          {!loadingDocuments && !families.length && !error && <p>暂无文档，请上传文档。</p>}
+          <ul className="knowledge-documents" aria-label="逻辑文档列表">{families.map(item => <li key={item.id}>
+            <button disabled={locked || !!confirmation} aria-pressed={family?.id === item.id}
+              onClick={() => { setError(""); documentsRequest.current += 1; setLoadingDocuments(false); void read(() => openFamily(item, base.id)); }}>{item.display_name}</button>
+            <span>{item.current_document_id ? "已选择当前版本" : "尚无当前版本"}</span>
+          </li>)}</ul>
+          {family && <div className="knowledge-heading"><h3>{family.display_name} · 版本记录</h3>
+            <button disabled={locked || base.status !== "active" || !!confirmation} onClick={() => {
+              setReplacement(true); setFile(null); setFileEpoch(n => n + 1); setError("");
+            }}>上传替代版本</button></div>}
+
           <ul className="knowledge-documents">{documents.map(item => <li key={item.id}>
-            <button disabled={locked} aria-pressed={document?.id === item.id} onClick={() => void openDocument(item)}>{item.file_name}</button>
-            <span>{item.file_type.toUpperCase()} · 版本 {item.version} · {statusLabels[item.status]}</span>
+            <button disabled={locked} aria-pressed={document?.id === item.id} onClick={() => void openDocument(item)}>{item.file_name} · 版本 {item.version}</button>
+            <span>{item.file_type.toUpperCase()} · 版本 {item.version} · {statusLabels[item.status]} · {item.is_current ? "当前版本" : "历史/候选版本"}</span>
             <small>创建 {formatTimestamp(item.created_at)} · 更新 {formatTimestamp(item.updated_at)}</small>
             {item.processing_error && <p>{item.processing_error}</p>}
             {item.status === "failed" && <p>请修正文件后重新选择上传，新上传不会替换本记录。</p>}
@@ -294,27 +332,39 @@ function WorkspaceKnowledgeAdmin({ workspaceId, accessToken, onUnauthorized, onP
             <p>{document.file_type.toUpperCase()} · 版本 {document.version} · {statusLabels[document.status]}</p>
             <p>创建 {formatTimestamp(document.created_at)} · 更新 {formatTimestamp(document.updated_at)}</p>
             {document.processing_error && <p>解析错误：{document.processing_error}</p>}
-            <p>当前索引状态未提供。解析完成不代表已经生成索引。</p>
+            <p>{document.is_current ? "当前版本" : "历史/候选版本"}；解析完成不代表已经生成索引。</p>
+            {document.indexing ? <div className="knowledge-index-result"><strong>已冻结索引</strong>
+              <p>{document.indexing.chunk_count} 个片段 · {formatTimestamp(document.indexing.indexed_at)}</p>
+              <p>{document.indexing.embedding_model} · {document.indexing.embedding_dimensions} 维</p>
+              <p>此索引保留历史引用。更新内容或索引请上传新版本。</p></div> : <p>尚未成功索引。</p>}
             <div className="knowledge-actions">
+              {family && !document.is_current && document.status === "ready" && document.indexing && <button
+                disabled={locked || base.status !== "active" || !!confirmation} onClick={() => {
+                  const chosenBase = base, chosenFamily = family, chosenDocument = document;
+                  const previous = documents.find(v => v.id === chosenFamily.current_document_id);
+                  setConfirmation({ text: `将当前版本切换为 ${chosenDocument.file_name}（版本 ${chosenDocument.version}），原当前版本 ${previous ? previous.version : chosenFamily.current_document_id ? "未确认" : "无"}${previous ? `（${previous.file_name}）` : ""} 将保留为历史记录。新的检索使用目标版本。`,
+                    action: () => void mutate(() => activateDocumentVersion(workspaceId, chosenBase.id, chosenFamily.id, chosenDocument.id, chosenFamily.revision, accessToken),
+                      () => "当前版本已切换。历史版本和引用保留。", () => loadDocuments(chosenBase.id, chosenFamily.id, chosenDocument.id)) });
+                }}>激活此版本</button>}
               {document.status === "ready" && <>
-                <button disabled={locked || base.status !== "active"} onClick={() => {
+                <button disabled={locked || base.status !== "active" || !!document.indexing} onClick={() => {
                   const chosenBase = base, chosenDocument = document;
-                  setConfirmation({ text: "文档文本将发送至已配置的 OpenAI 服务生成索引，可能产生费用；已有索引将在成功后替换。", action: () => {
+                  setConfirmation({ text: "文档文本将发送至已配置的 OpenAI 服务生成索引，可能产生费用；成功的索引将冻结保留，不替换历史片段。", action: () => {
                     setIndexResult(null);
-                    void mutate(() => indexDocument(workspaceId, chosenBase.id, chosenDocument.id, accessToken), result => { setIndexResult(result); return "本次索引成功。"; });
+                    void mutate(() => indexDocument(workspaceId, chosenBase.id, chosenDocument.id, accessToken), result => { setIndexResult(result); return "本次索引成功。"; }, () => loadDocuments(chosenBase.id, chosenDocument.family_id, chosenDocument.id));
                   } });
-                }}>索引 / 重新索引</button>
+                }}>生成索引</button>
                 <button disabled={locked} onClick={() => {
                   const chosenBase = base, chosenDocument = document;
-                  setConfirmation({ text: "禁用后，该文档不会进入新的知识检索。已保存的文本与索引保留。", action: () => void mutate(
+                  setConfirmation({ text: "禁用后，此版本不会进入新的知识检索。已保存的文本、索引与当前指针保留，不自动回退。", action: () => void mutate(
                     () => updateDocumentStatus(workspaceId, chosenBase.id, chosenDocument.id, "disabled", accessToken),
-                    () => "文档已禁用。", () => loadDocuments(chosenBase.id)) });
+                    () => "文档已禁用，当前指针保留，不自动回退。", () => loadDocuments(chosenBase.id, chosenDocument.family_id, chosenDocument.id)) });
                 }}>禁用文档</button>
               </>}
               {document.status === "disabled" && <button disabled={locked} onClick={() => {
                 const chosenBase = base, chosenDocument = document;
                 void mutate(() => updateDocumentStatus(workspaceId, chosenBase.id, chosenDocument.id, "ready", accessToken),
-                  () => "文档已启用，未自动生成索引。", () => loadDocuments(chosenBase.id));
+                  () => "文档已启用，未自动生成索引或激活历史版本。", () => loadDocuments(chosenBase.id, chosenDocument.family_id, chosenDocument.id));
               }}>启用文档</button>}
             </div>
           </article>}

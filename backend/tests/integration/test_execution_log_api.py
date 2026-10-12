@@ -143,6 +143,7 @@ def use_knowledge_fakes(monkeypatch: pytest.MonkeyPatch, status: AnswerStatus) -
             message=None if answered else "Not enough evidence.",
             citations=[
                 AnswerCitation(
+                    family_id=uuid4(),
                     document_id=uuid4(), file_name="SENTINEL-file.md", document_version=1,
                     chunk_id=uuid4(), chunk_index=0, excerpt=ANSWER_SENTINEL,
                 )

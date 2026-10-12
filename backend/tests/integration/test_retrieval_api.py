@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.dependencies.embeddings import get_embedding_provider
+from app.api.dependencies.embeddings import get_embedding_provider, get_index_embedding_provider
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
 from app.main import app
@@ -24,6 +24,7 @@ from app.models.enums import (
 from app.security.tokens import create_access_token
 from app.services import retrieval as retrieval_service
 from app.services.embeddings import EmbeddingProviderError, OpenAIEmbeddingProvider
+from tests.integration.document_factory import make_document, mark_indexed
 
 pytestmark = pytest.mark.integration
 JWT_SECRET = "retrieval-api-secret-longer-than-thirty-two-bytes"
@@ -111,6 +112,9 @@ def client(
     app.dependency_overrides[get_db_session] = override_db_session
     app.dependency_overrides[get_settings] = lambda: auth_settings
     app.dependency_overrides[get_embedding_provider] = lambda: fake_provider
+    app.dependency_overrides[get_index_embedding_provider] = app.dependency_overrides[
+        get_embedding_provider
+    ]
     try:
         with TestClient(app) as test_client:
             yield test_client
@@ -118,6 +122,7 @@ def client(
         app.dependency_overrides.pop(get_db_session, None)
         app.dependency_overrides.pop(get_settings, None)
         app.dependency_overrides.pop(get_embedding_provider, None)
+        app.dependency_overrides.pop(get_index_embedding_provider, None)
 
 
 def create_user(session: Session, *, email: str) -> User:
@@ -187,7 +192,8 @@ def create_document(
     status: DocumentStatus = DocumentStatus.READY,
     extracted_text: str | None = "Travel policy text",
 ) -> Document:
-    document = Document(
+    document = make_document(
+        session,
         workspace_id=workspace.id,
         knowledge_base_id=knowledge_base.id,
         file_name=file_name,
@@ -220,6 +226,8 @@ def add_chunk(
     )
     session.add(chunk)
     session.flush()
+    if document.status in {"ready", "disabled"}:
+        mark_indexed(session, document)
     return chunk
 
 
@@ -378,7 +386,7 @@ def test_disabled_workspace_denies_indexing(
     assert response.json() == {"detail": "Not authorized for this workspace"}
 
 
-def test_reindex_replaces_chunks_without_duplication(
+def test_reindex_reuses_frozen_chunks_without_duplication(
     client: TestClient,
     db_session: Session,
     auth_settings: Settings,
@@ -398,17 +406,18 @@ def test_reindex_replaces_chunks_without_duplication(
     assert response.status_code == 200
     chunks = db_session.scalars(select(Chunk).where(Chunk.document_id == document.id)).all()
     assert len(chunks) == 1
-    assert chunks[0].id != old_chunk.id
-    assert chunks[0].content == "Travel policy text"
+    assert chunks[0].id == old_chunk.id
+    assert chunks[0].content == "Old security content"
 
 
-def test_chunking_failure_preserves_existing_chunks(
+def test_frozen_index_bypasses_chunker_failure(
     db_session: Session,
     fake_provider: FakeEmbeddingProvider,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     caller = create_user(db_session, email="chunking-failure@company.com")
     workspace = create_workspace(db_session, slug="chunking-failure")
+    add_membership(db_session, caller, workspace, role=MembershipRole.KNOWLEDGE_ADMIN)
     knowledge_base = create_knowledge_base(db_session, workspace, caller)
     document = create_document(db_session, workspace, knowledge_base, caller)
     old_chunk = add_chunk(db_session, workspace, document, content="Existing content")
@@ -420,23 +429,22 @@ def test_chunking_failure_preserves_existing_chunks(
         raise RuntimeError("simulated chunking failure")
 
     monkeypatch.setattr(retrieval_service, "split_document_text", fail_chunking)
-    with pytest.raises(RuntimeError, match="simulated chunking failure"):
-        retrieval_service.index_document(
-            db_session,
-            workspace.id,
-            knowledge_base.id,
-            document.id,
-            fake_provider,
-        )
+    result = retrieval_service.index_document(
+        db_session,
+        workspace.id,
+        knowledge_base.id,
+        document.id,
+        fake_provider,
+        actor_id=caller.id,
+    )
+    assert result.chunk_count == 1
     db_session.rollback()
 
-    persisted = db_session.scalars(
-        select(Chunk).where(Chunk.document_id == document.id)
-    ).all()
+    persisted = db_session.scalars(select(Chunk).where(Chunk.document_id == document.id)).all()
     assert [chunk.id for chunk in persisted] == [old_chunk_id]
 
 
-def test_provider_failure_preserves_existing_chunks_and_is_sanitized(
+def test_frozen_index_bypasses_provider_failure(
     client: TestClient,
     db_session: Session,
     auth_settings: Settings,
@@ -448,21 +456,22 @@ def test_provider_failure_preserves_existing_chunks_and_is_sanitized(
     document = create_document(db_session, workspace, knowledge_base, caller)
     old_chunk = add_chunk(db_session, workspace, document, content="Existing content")
     app.dependency_overrides[get_embedding_provider] = FailingEmbeddingProvider
+    app.dependency_overrides[get_index_embedding_provider] = app.dependency_overrides[
+        get_embedding_provider
+    ]
 
     response = client.post(
         index_path(workspace, knowledge_base, document),
         headers=bearer(caller, auth_settings),
     )
 
-    assert response.status_code == 502
-    assert response.json() == {"detail": "Embedding provider request failed"}
-    persisted = db_session.scalars(
-        select(Chunk).where(Chunk.document_id == document.id)
-    ).all()
+    assert response.status_code == 200
+    assert response.json()["chunk_count"] == 1
+    persisted = db_session.scalars(select(Chunk).where(Chunk.document_id == document.id)).all()
     assert [chunk.id for chunk in persisted] == [old_chunk.id]
 
 
-def test_invalid_embedding_response_preserves_existing_chunks(
+def test_frozen_index_bypasses_invalid_provider_response(
     client: TestClient,
     db_session: Session,
     auth_settings: Settings,
@@ -474,17 +483,18 @@ def test_invalid_embedding_response_preserves_existing_chunks(
     document = create_document(db_session, workspace, knowledge_base, caller)
     old_chunk = add_chunk(db_session, workspace, document, content="Existing content")
     app.dependency_overrides[get_embedding_provider] = WrongDimensionEmbeddingProvider
+    app.dependency_overrides[get_index_embedding_provider] = app.dependency_overrides[
+        get_embedding_provider
+    ]
 
     response = client.post(
         index_path(workspace, knowledge_base, document),
         headers=bearer(caller, auth_settings),
     )
 
-    assert response.status_code == 502
-    assert response.json() == {"detail": "Embedding provider request failed"}
-    persisted = db_session.scalars(
-        select(Chunk).where(Chunk.document_id == document.id)
-    ).all()
+    assert response.status_code == 200
+    assert response.json()["chunk_count"] == 1
+    persisted = db_session.scalars(select(Chunk).where(Chunk.document_id == document.id)).all()
     assert [chunk.id for chunk in persisted] == [old_chunk.id]
 
 
@@ -514,6 +524,9 @@ def test_malformed_openai_response_returns_502_and_preserves_chunks(
         encoding=Utf8TokenEncoding(),
     )
     app.dependency_overrides[get_embedding_provider] = lambda: provider
+    app.dependency_overrides[get_index_embedding_provider] = app.dependency_overrides[
+        get_embedding_provider
+    ]
     path = (
         index_path(workspace, knowledge_base, document)
         if operation == "index"
@@ -526,11 +539,10 @@ def test_malformed_openai_response_returns_502_and_preserves_chunks(
         json={"query": "travel"} if operation == "search" else None,
     )
 
-    assert response.status_code == 502
-    assert response.json() == {"detail": "Embedding provider request failed"}
-    persisted = db_session.scalars(
-        select(Chunk).where(Chunk.document_id == document.id)
-    ).all()
+    assert response.status_code == (200 if operation == "index" else 502)
+    if operation == "search":
+        assert response.json() == {"detail": "Embedding provider request failed"}
+    persisted = db_session.scalars(select(Chunk).where(Chunk.document_id == document.id)).all()
     assert [chunk.id for chunk in persisted] == [old_chunk_id]
 
 
@@ -544,6 +556,9 @@ def test_zero_query_embedding_returns_sanitized_provider_failure(
     add_membership(db_session, caller, workspace)
     knowledge_base = create_knowledge_base(db_session, workspace, caller)
     app.dependency_overrides[get_embedding_provider] = ZeroEmbeddingProvider
+    app.dependency_overrides[get_index_embedding_provider] = app.dependency_overrides[
+        get_embedding_provider
+    ]
 
     response = client.post(
         f"{base_path(workspace, knowledge_base)}/search",
@@ -555,13 +570,14 @@ def test_zero_query_embedding_returns_sanitized_provider_failure(
     assert response.json() == {"detail": "Embedding provider request failed"}
 
 
-def test_persistence_failure_rolls_back_chunk_replacement(
+def test_frozen_index_needs_no_additional_commit(
     db_session: Session,
     fake_provider: FakeEmbeddingProvider,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     caller = create_user(db_session, email="persistence-failure@company.com")
     workspace = create_workspace(db_session, slug="persistence-failure")
+    add_membership(db_session, caller, workspace, role=MembershipRole.KNOWLEDGE_ADMIN)
     knowledge_base = create_knowledge_base(db_session, workspace, caller)
     document = create_document(db_session, workspace, knowledge_base, caller)
     old_chunk = add_chunk(db_session, workspace, document, content="Existing content")
@@ -572,19 +588,18 @@ def test_persistence_failure_rolls_back_chunk_replacement(
         raise RuntimeError("simulated commit failure")
 
     monkeypatch.setattr(db_session, "commit", fail_commit)
-    with pytest.raises(RuntimeError, match="simulated commit failure"):
-        retrieval_service.index_document(
-            db_session,
-            workspace.id,
-            knowledge_base.id,
-            document.id,
-            fake_provider,
-        )
+    result = retrieval_service.index_document(
+        db_session,
+        workspace.id,
+        knowledge_base.id,
+        document.id,
+        fake_provider,
+        actor_id=caller.id,
+    )
+    assert result.chunk_count == 1
     db_session.rollback()
 
-    persisted = db_session.scalars(
-        select(Chunk).where(Chunk.document_id == document.id)
-    ).all()
+    persisted = db_session.scalars(select(Chunk).where(Chunk.document_id == document.id)).all()
     assert [chunk.id for chunk in persisted] == [old_chunk_id]
 
 
@@ -598,6 +613,7 @@ def test_missing_provider_configuration_returns_service_unavailable(
     add_membership(db_session, caller, workspace)
     knowledge_base = create_knowledge_base(db_session, workspace, caller)
     app.dependency_overrides.pop(get_embedding_provider, None)
+    app.dependency_overrides.pop(get_index_embedding_provider, None)
 
     response = client.post(
         f"{base_path(workspace, knowledge_base)}/search",
@@ -616,7 +632,6 @@ def test_missing_provider_configuration_returns_service_unavailable(
         (DocumentStatus.PROCESSING, "Text"),
         (DocumentStatus.FAILED, None),
         (DocumentStatus.DISABLED, "Text"),
-        (DocumentStatus.READY, None),
     ],
 )
 def test_only_ready_extracted_documents_can_be_indexed(
@@ -690,6 +705,7 @@ def test_active_members_can_search_ranked_workspace_results(
         "results": [
             {
                 "chunk_id": str(travel_chunk.id),
+                "family_id": str(travel_document.family_id),
                 "document_id": str(travel_document.id),
                 "file_name": "travel.txt",
                 "document_version": 1,
@@ -793,9 +809,7 @@ def test_search_excludes_disabled_and_cross_workspace_documents(
     )
 
     assert response.status_code == 200
-    assert [item["chunk_id"] for item in response.json()["results"]] == [
-        str(allowed_chunk.id)
-    ]
+    assert [item["chunk_id"] for item in response.json()["results"]] == [str(allowed_chunk.id)]
 
 
 @pytest.mark.parametrize("operation", ["index", "search"])

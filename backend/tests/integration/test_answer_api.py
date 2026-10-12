@@ -31,6 +31,7 @@ from app.services.generation import (
     GenerationProviderError,
     GenerationUsage,
 )
+from tests.integration.document_factory import make_document, mark_indexed
 
 pytestmark = pytest.mark.integration
 JWT_SECRET = "answer-api-secret-longer-than-thirty-two-bytes"
@@ -200,7 +201,7 @@ def create_document(
     file_name: str,
     status: DocumentStatus = DocumentStatus.READY,
 ) -> Document:
-    document = Document(
+    document = make_document(session,
         workspace_id=workspace.id,
         knowledge_base_id=knowledge_base.id,
         file_name=file_name,
@@ -232,6 +233,8 @@ def add_chunk(
     )
     session.add(chunk)
     session.flush()
+    if document.status in {"ready", "disabled"}:
+        mark_indexed(session, document)
     return chunk
 
 
@@ -305,7 +308,8 @@ def test_active_members_receive_server_mapped_grounded_citation(
     assert payload["message"] is None
     assert payload["citations"] == [
         {
-            "document_id": str(document.id),
+            "family_id": str(document.family_id),
+                "document_id": str(document.id),
             "file_name": "travel-policy.txt",
             "document_version": 1,
             "chunk_id": str(chunk.id),

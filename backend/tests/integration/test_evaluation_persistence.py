@@ -8,15 +8,15 @@ from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import MetaData, inspect
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 
 from alembic import command
-from app.db.base import Base
 from app.models import Agent, EvaluationCase, EvaluationDataset, KnowledgeBase, Tool
 from app.models.enums import MembershipRole
 from app.schemas.evaluation import DatasetCreate
 from app.services import evaluation
+from tests.integration.document_factory import legacy_metadata
 from tests.integration.test_knowledge_base_api import add_membership, create_user, create_workspace
 
 pytestmark = pytest.mark.integration
@@ -27,17 +27,8 @@ def test_migration_roundtrip_and_drift(postgres_engine, database_urls):
     assert database_urls[1].database == "enterprise_ai_workbench_test"
     config = Config(str(BACKEND / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
-    assert script.get_heads() == ["0013"]
+    assert script.get_heads() == ["0014"]
     assert script.get_revision("0011").down_revision == "0010"
-    legacy = MetaData(naming_convention=Base.metadata.naming_convention)
-    for table in Base.metadata.sorted_tables:
-        if table.name not in {
-            "evaluation_runs",
-            "evaluation_run_cases",
-            "bad_cases",
-            "bad_case_history",
-        }:
-            table.to_metadata(legacy)
     with postgres_engine.connect() as connection:
         config.attributes["connection"] = connection
         try:
@@ -45,6 +36,10 @@ def test_migration_roundtrip_and_drift(postgres_engine, database_urls):
             before = set(inspect(connection).get_table_names())
             assert not {"evaluation_datasets", "evaluation_cases"} & before
             command.upgrade(config, "0011")
+            legacy = legacy_metadata(
+                connection,
+                ("evaluation_runs", "evaluation_run_cases", "bad_cases", "bad_case_history"),
+            )
             assert set(inspect(connection).get_table_names()) - before == {
                 "evaluation_datasets",
                 "evaluation_cases",

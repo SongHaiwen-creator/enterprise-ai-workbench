@@ -225,8 +225,9 @@ approval. A minimal Approvals UI lists, shows, approves, and rejects.
 Status: In Progress (Feature 014 Execution Logs merged/delivered in PR #33;
 Feature 015 Evaluation Dataset merged/delivered in PR #35 on 2026-10-02;
 Feature 016 Evaluation Run & Metrics merged/delivered in PR #37 on 2026-10-03;
-Features 017-019 merged/delivered; Feature 020 Agent & Tool Administration UI
-is implemented and verified; PR #49 awaits human review and merge)
+Features 017-020 merged/delivered, including Feature 020 PR #49;
+Feature 021 Document Version Management is implemented and verified in PR #51,
+awaiting human review and merge)
 
 Goal:
 
@@ -332,7 +333,7 @@ and indexing success must remain distinct; Document version/replacement work
 is deferred to proposed Feature 021. Delivery of this feature does not approve
 the full remaining MVP plan.
 
-### Agent & Tool Administration UI (Feature 020 - awaiting human merge)
+### Agent & Tool Administration UI (Feature 020 - merged/delivered)
 
 The user selected Feature 020 after Feature 019's human merge, requested
 specification first, and then approved proposal `6cc4278` with "approve".
@@ -341,7 +342,8 @@ The specification is `docs/features/020-agent-tool-admin-ui.md` on branch
 Implementation, full backend/frontend checks and browser acceptance
 are recorded in `docs/features/020-agent-tool-admin-ui-verification.md`.
 The user separately authorized the dedicated PostgreSQL test-schema verification;
-all required checks passed. PR #49 is ready for human review but not yet delivered.
+all required checks passed. PR #49 has been human-merged; Issue #48 is closed.
+This was rechecked from GitHub and latest main `2508d67` when starting Feature 021.
 It follows the Feature 020 entry in still-open planning PR #40 at `77acb1a`,
 without adopting that unmerged plan as the delivered baseline.
 
@@ -351,7 +353,34 @@ Only current-Workspace Agent/System administrators manage configurations;
 employees retain the existing active-Agent use path. It reuses Features 011-013
 and the current navigation without new APIs, migrations, execution permissions,
 approval policies or dependencies. Configuration versions remain Feature 022;
-no subsequent roadmap feature starts in this thread.
+its implementation thread ends with human merge.
+
+### Document Version Management (Feature 021 - implemented, awaiting human merge)
+
+The user selected Feature 021 after Feature 020's human merge and requested
+specification first. The proposal is
+`docs/features/021-document-version-management.md`, tracked in Issue #50 on
+branch `feat/document-version-management`, based on latest main `2508d67`.
+It adopts only Feature 021's minimum scope from still-open planning PR #40
+at `77acb1a`; the full remaining MVP plan is not adopted or implemented.
+
+Implemented scope: stable document families with immutable concrete versions,
+replacement upload and explicit activation, failure preservation of the old
+current version, frozen successful Chunk sets, current-only retrieval and
+Evaluation corpus capture, and historical citation identity. Reuse the existing
+Knowledge Administration UI and current Knowledge/System administrator policy.
+
+The user approved H1-H4 of proposal `1c435300cd36912804539b4fea263d180e852385`
+with "approve" on 2026-10-11. Phase B implementation and migration 0014 were
+verified exclusively against the authorized dedicated local test database.
+Full backend regression passed (1684 tests), frontend tests passed (9 Node API
+and 261 Vitest), and Ruff, frontend lint/build, browser acceptance and independent
+high-risk review passed. Evidence:
+`docs/features/021-document-version-management-verification.md`.
+PR #51 is awaiting human review and merge; Issue #50 remains open until merge.
+No runtime/production database upgrade, deployment or live Provider verification
+was performed. Feature 021 is not delivered until human merge; do not start
+Feature 022 in this development thread.
 
 ### Supporting business evaluation baseline
 

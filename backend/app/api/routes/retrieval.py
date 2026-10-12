@@ -7,7 +7,11 @@ from app.api.dependencies.authorization import (
     ActiveWorkspaceMembership,
     KnowledgeAdministratorMembership,
 )
-from app.api.dependencies.embeddings import ConfiguredEmbeddingProvider
+from app.api.dependencies.embeddings import (
+    ConfiguredEmbeddingProvider,
+    ConfiguredIndexEmbeddingProvider,
+)
+from app.api.document_route import DocumentRoute
 from app.schemas.common import ErrorResponse
 from app.schemas.retrieval import (
     DocumentIndexResponse,
@@ -21,6 +25,7 @@ from app.services.embeddings import EmbeddingProviderError
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/knowledge-bases/{knowledge_base_id}",
     tags=["retrieval"],
+    route_class=DocumentRoute,
 )
 
 RETRIEVAL_RESPONSES = {
@@ -44,7 +49,7 @@ def index_document(
     document_id: UUID,
     session: DatabaseSession,
     _administrator: KnowledgeAdministratorMembership,
-    provider: ConfiguredEmbeddingProvider,
+    provider: ConfiguredIndexEmbeddingProvider,
 ) -> DocumentIndexResponse:
     try:
         result = retrieval_service.index_document(
@@ -53,6 +58,7 @@ def index_document(
             knowledge_base_id,
             document_id,
             provider,
+            actor_id=_administrator.user_id,
         )
     except EmbeddingProviderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
