@@ -6,7 +6,7 @@
 
 项目采用 Next.js + FastAPI + PostgreSQL / pgvector，提供简体中文界面、桌面与移动端布局，以及以工作空间为边界的后端权限控制。
 
-[功能介绍](#功能介绍) · [界面预览](#界面预览) · [技术架构](#技术架构) · [本地运行](#本地运行) · [演示指南](#演示指南) · [测试与验证](#测试与验证)
+[在线产品首页](https://songhaiwen-creator.github.io/enterprise-ai-workbench/) · [功能介绍](#功能介绍) · [界面预览](#界面预览) · [技术架构](#技术架构) · [本地运行](#本地运行) · [演示指南](#演示指南) · [测试与验证](#测试与验证)
 
 ![企业 AI 工作台：智能助手](docs/screenshots/chinese-ui-refresh/assistant-desktop.png)
 
