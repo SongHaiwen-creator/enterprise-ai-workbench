@@ -169,6 +169,18 @@ FastAPI 是业务与 AI 执行的控制层，负责鉴权、资源归属、工�
 
 ## 本地运行
 
+### Windows 日常双击启动
+
+完成下方首次环境准备后，双击根目录 `Start-Workbench.cmd` 即可启动。
+程序会检查 Docker、启动已有 PostgreSQL 容器、只读检查数据库版本，
+启动缺失的前后端服务，最后在默认浏览器打开工作台。
+重复运行会复用健康服务；端口冲突或启动失败会显示提示，不会自动关闭其他进程。
+日志位于所选项目目录 `.cache/dev-services/`，关闭启动窗口不会停止后台服务。
+
+默认使用当前已配置的仓库；Codex 工作树尚未配置依赖时，会查找同仓库的主目录。
+也可显式指定 `Start-Workbench.cmd -ProjectRoot "D:\Projects\enterprise-ai-workbench"`。
+`-NoBrowser` 可跳过自动打开浏览器。程序不会安装依赖、创建数据库或执行迁移。
+
 ### 环境准备
 
 - Git、Docker 与 Docker Compose。
